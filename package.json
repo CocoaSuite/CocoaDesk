@@ -1,0 +1,25 @@
+{
+  "name": "cocoadesk",
+  "version": "0.1.0",
+  "description": "Personal organisation, monitoring and automation for the Cocoa suite.",
+  "private": true,
+  "type": "module",
+  "author": "CocoaSuite",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "dist": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^5.9",
+    "vite": "^7"
+  }
+}
