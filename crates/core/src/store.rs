@@ -13,7 +13,7 @@ const TIME: &str = "%H:%M";
 const STAMP: &str = "%Y-%m-%dT%H:%M:%S";
 
 pub struct Store {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 /// What an import changed.
@@ -77,7 +77,8 @@ fn ts(t: NaiveDateTime) -> String {
     t.format(STAMP).to_string()
 }
 
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE semesters (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -140,7 +141,39 @@ CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
-"#];
+"#,
+    r#"
+CREATE TABLE news_topics (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  last_checked TEXT,
+  last_error TEXT
+);
+CREATE TABLE news_items (
+  id INTEGER PRIMARY KEY,
+  topic_id INTEGER NOT NULL REFERENCES news_topics(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  source_name TEXT NOT NULL DEFAULT '',
+  domain TEXT NOT NULL DEFAULT '',
+  published_at TEXT,
+  fetched_at TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  saved INTEGER NOT NULL DEFAULT 0,
+  matched TEXT NOT NULL DEFAULT '[]',
+  story TEXT NOT NULL,
+  UNIQUE (topic_id, url)
+);
+CREATE INDEX news_items_topic ON news_items(topic_id, fetched_at);
+CREATE TABLE news_blocked_sites (
+  domain TEXT PRIMARY KEY
+);
+"#,
+];
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {

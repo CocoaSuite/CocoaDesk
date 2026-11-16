@@ -7,6 +7,7 @@ pub mod calendar;
 pub mod error;
 pub mod import;
 pub mod model;
+pub mod news;
 pub mod service;
 pub mod store;
 

@@ -71,3 +71,44 @@ export const KIND_LABEL: Record<ClassKind, string> = {
   lecture: 'Lecture', seminar: 'Seminar', lab: 'Lab', practice: 'Practice', sport: 'Sport', other: 'Other'
 }
 export const WEEKS_LABEL: Record<Weeks, string> = { every: 'Every week', top: 'Top week only', bottom: 'Bottom week only' }
+
+// ---------- news ----------
+
+export type SearchEngine = 'google' | 'bing'
+export type MatchIn = 'title' | 'titleAndSummary'
+export type NotifyMode = 'off' | 'all' | 'words'
+export type NewsFilter = 'all' | 'unread' | 'saved'
+
+export interface TopicConfig {
+  include: string[]; exclude: string[]; blockedSites: string[]; feeds: string[]
+  search: SearchEngine | null; language: 'ru' | 'en'; matchIn: MatchIn; intervalMinutes: number
+  activeFrom: string | null; activeTo: string | null; notify: NotifyMode; notifyWords: string[]
+}
+export interface TopicInput extends TopicConfig { name: string; enabled: boolean }
+export interface Topic extends TopicInput {
+  id: number; createdAt: string; lastChecked: string | null; lastError: string | null
+}
+export interface TopicSummary extends Topic { unread: number; nextCheck: string | null }
+export interface NewsItem {
+  id: number; topicId: number; url: string; title: string; summary: string; sourceName: string; domain: string
+  publishedAt: string | null; fetchedAt: string; read: boolean; saved: boolean; matched: string[]; story: string
+}
+export interface Story { lead: NewsItem; also: NewsItem[]; unread: boolean }
+export interface NewsView {
+  topics: TopicSummary[]; topic: TopicSummary | null; stories: Story[]; filter: NewsFilter; blockedSites: string[]; now: string
+}
+export interface CheckOutcome { topicId: number; topicName: string; added: number; error: string | null }
+
+export const newsApi = {
+  view: (topicId: number | null, filter: NewsFilter) => invoke<NewsView>('news_view', { topicId, filter }),
+  saveTopic: (id: number | null, input: TopicInput) => invoke<number>('save_topic', { id, input }),
+  deleteTopic: (id: number) => invoke<void>('delete_topic', { id }),
+  checkNow: (id: number) => invoke<CheckOutcome>('check_topic_now', { id }),
+  findFeed: (address: string) => invoke<{ url: string; title: string }>('find_feed', { address }),
+  setStoryRead: (itemId: number, read: boolean) => invoke<void>('set_story_read', { itemId, read }),
+  markTopicRead: (topicId: number) => invoke<void>('mark_topic_read', { topicId }),
+  setSaved: (itemId: number, saved: boolean) => invoke<void>('set_saved', { itemId, saved }),
+  blockSite: (site: string) => invoke<string>('block_site', { site }),
+  unblockSite: (domain: string) => invoke<void>('unblock_site', { domain }),
+  openStory: (itemId: number) => invoke<void>('open_story', { itemId })
+}

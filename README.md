@@ -15,6 +15,18 @@ CocoaDesk is the personal desk of the Cocoa suite: one place to organise, keep a
 - **Excel import** of university timetables: pick your group, see every class it found and untick the ones that aren't yours. It reads alternating weeks (`top / bottom`), merged lecture cells, teachers, rooms, remarks and month ranges, and takes the bell schedule from the file. Importing a newer version of the file updates classes in place and remembers what you unticked.
 - Keeps running in the notification area when the window is closed, so marking and reminders carry on (can be turned off).
 
+### News
+
+- **Topics** you choose, each checked on its own schedule (every few minutes up to once a week), optionally only between set hours.
+- A topic looks in **news searches** (Google News or Bing News, Russian or English edition) and any **RSS/Atom feeds** you add — paste a website and CocoaDesk finds its feed.
+- Only stories that **mention your words** are kept. Word endings don't matter («электромобиль» also finds «электромобилей»); `word*` matches the start of a word and `"quotes"` match exactly. Stories mentioning words you want to leave out are dropped.
+- **Block websites** for one topic or for every topic, including from any story's menu. Subdomains are blocked too, and stories already found from a blocked site are removed (saved ones stay).
+- The same story from several websites is shown once, with the others underneath.
+- Unread, saved and read stories; stories open in your browser. Unsaved stories are cleared after 30 days.
+- Optional notifications for every new story, or only when a headline mentions certain words.
+
+Matching is plain word comparison with a standard stemmer — no recommendations or ranking; stories are listed newest first.
+
 ## Development
 
 Requires Node.js 22 and a stable Rust toolchain. On Windows, WebView2 is already part of the system.
@@ -28,8 +40,8 @@ cargo test -p cocoadesk-core
 
 The project is split into:
 
-- `crates/core` — calendar rules, storage (SQLite), the timetable import and the background timer logic. Plain Rust with unit tests; no UI.
-- `src-tauri` — the desktop shell: window, notification-area icon, timer thread and the commands the interface calls.
+- `crates/core` — calendar rules, news matching and feeds, storage (SQLite), the timetable import and the background timer logic. Plain Rust with unit tests; no UI.
+- `src-tauri` — the desktop shell: window, notification-area icon, timer threads (classes and news) and the commands the interface calls.
 - `src` — the interface (TypeScript, no framework), styled after CocoaAuthor.
 
 Data lives in `%APPDATA%\com.cocoasuite.cocoadesk\cocoadesk.db`.

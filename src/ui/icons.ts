@@ -10,7 +10,12 @@ const P: Record<string, string> = {
   cap: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   clock: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 7v5l3 2',
-  edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4'
+  edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  feed: 'M5 5a14 14 0 0 1 14 14M5 11a8 8 0 0 1 8 8M6 18h.01',
+  refresh: 'M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4',
+  bookmark: 'M6 3h12v18l-6-4-6 4z',
+  ban: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
+  more: 'M5 12h.01M12 12h.01M19 12h.01'
 }
 
 export function icon(name: keyof typeof P | string, cls = 'i'): SVGSVGElement {

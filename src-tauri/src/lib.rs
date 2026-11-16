@@ -1,20 +1,23 @@
 //! The CocoaDesk desktop shell: window, tray, background timer and the commands the UI calls.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate, NaiveDateTime, Timelike};
+use chrono::{Local, NaiveDate, NaiveDateTime, Timelike, Utc};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 
 use cocoadesk_core::import::WorkbookPreview;
 use cocoadesk_core::model::{ClassInput, MarkStatus, Period};
+use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView};
+use cocoadesk_core::news::{feed, HttpFetcher, TopicInput};
 use cocoadesk_core::service::{self, ImportDone, ImportRequest, Settings, WeekView};
 use cocoadesk_core::store::{SemesterInput, Store};
 
@@ -29,6 +32,9 @@ struct AppState {
     store: Mutex<Store>,
     files: Mutex<HashMap<String, Picked>>,
     next_file: AtomicU64,
+    fetcher: HttpFetcher,
+    /// Topics being checked right now, so a timer run and "Check now" don't overlap.
+    checking: Mutex<HashSet<i64>>,
 }
 
 impl AppState {
@@ -164,6 +170,157 @@ fn import_commit(state: State<AppState>, token: String, request: ImportRequest) 
     state.file(&token, |f| service::commit_import(&mut store, &f.bytes, &request, now()))?.map_err(err)
 }
 
+// ---------- news ----------
+
+#[tauri::command]
+fn news_view(state: State<AppState>, topic_id: Option<i64>, filter: Option<Filter>) -> Result<NewsView, String> {
+    news::news_view(&*state.store()?, topic_id, filter.unwrap_or(Filter::All), now()).map_err(err)
+}
+
+#[tauri::command]
+fn save_topic(app: AppHandle, state: State<AppState>, id: Option<i64>, input: TopicInput) -> Result<i64, String> {
+    let id = {
+        let store = state.store()?;
+        match id {
+            Some(id) => store.update_topic(id, &input).map(|_| id),
+            None => store.create_topic(&input, now()),
+        }
+        .map_err(err)?
+    };
+    // A new or changed topic is checked straight away.
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        run_check(&handle, id);
+    });
+    Ok(id)
+}
+
+#[tauri::command]
+fn delete_topic(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_topic(id).map_err(err)
+}
+
+#[tauri::command]
+async fn check_topic_now(app: AppHandle, id: i64) -> Result<CheckOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || run_check(&app, id).ok_or_else(|| "This topic is already being checked.".to_string())?)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+struct FoundFeed {
+    url: String,
+    title: String,
+}
+
+#[tauri::command]
+async fn find_feed(app: AppHandle, address: String) -> Result<FoundFeed, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        feed::discover_feed(&state.fetcher, &address).map(|(url, title)| FoundFeed { url, title }).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn set_story_read(state: State<AppState>, item_id: i64, read: bool) -> Result<(), String> {
+    state.store()?.set_story_read(item_id, read).map_err(err)
+}
+
+#[tauri::command]
+fn mark_topic_read(state: State<AppState>, topic_id: i64) -> Result<(), String> {
+    state.store()?.mark_topic_read(topic_id).map_err(err)
+}
+
+#[tauri::command]
+fn set_saved(state: State<AppState>, item_id: i64, saved: bool) -> Result<(), String> {
+    state.store()?.set_saved(item_id, saved).map_err(err)
+}
+
+#[tauri::command]
+fn block_site(state: State<AppState>, site: String) -> Result<String, String> {
+    state.store()?.block_site(&site).map_err(err)
+}
+
+#[tauri::command]
+fn unblock_site(state: State<AppState>, domain: String) -> Result<(), String> {
+    state.store()?.unblock_site(&domain).map_err(err)
+}
+
+/// Opens a story in the default browser and marks it read.
+#[tauri::command]
+fn open_story(app: AppHandle, state: State<AppState>, item_id: i64) -> Result<(), String> {
+    let item = {
+        let store = state.store()?;
+        let item = store.news_item(item_id).map_err(err)?;
+        store.set_story_read(item_id, true).map_err(err)?;
+        item
+    };
+    if !(item.url.starts_with("https://") || item.url.starts_with("http://")) {
+        return Err("That story has no web address.".into());
+    }
+    app.opener().open_url(&item.url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Checks one topic, sends its notifications and tells the UI. Returns `None` if a check of
+/// the same topic is already running.
+fn run_check(app: &AppHandle, id: i64) -> Option<Result<CheckOutcome, String>> {
+    let state = app.state::<AppState>();
+    {
+        let mut busy = state.checking.lock().ok()?;
+        if !busy.insert(id) {
+            return None;
+        }
+    }
+    let _ = app.emit("news:checking", id);
+    let result = news::check_topic(&state.store, id, &state.fetcher, Utc::now(), now()).map_err(err);
+    if let Ok(mut busy) = state.checking.lock() {
+        busy.remove(&id);
+    }
+    if let Ok(out) = &result {
+        for item in &out.notify {
+            let body = if item.source_name.is_empty() { item.title.clone() } else { format!("{} · {}", item.title, item.source_name) };
+            let _ = app.notification().builder().title(&out.topic_name).body(body).show();
+        }
+        if out.notify_more > 0 {
+            let _ = app.notification().builder().title(&out.topic_name).body(format!("…and {} more new stories", out.notify_more)).show();
+        }
+    }
+    let _ = app.emit("news:changed", id);
+    Some(result)
+}
+
+/// Checks topics whose interval has passed. Runs every 30 seconds; each topic is fetched on
+/// its own thread so one slow website doesn't hold up the rest.
+fn start_news_timer(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut last_prune: Option<std::time::Instant> = None;
+        loop {
+            let due = {
+                let state = app.state::<AppState>();
+                let ids = state.store().ok().and_then(|s| news::due_topics(&s, now()).ok()).unwrap_or_default();
+                if last_prune.is_none_or(|t| t.elapsed() > Duration::from_secs(3600)) {
+                    if let Ok(s) = state.store() {
+                        let _ = s.prune_news(Utc::now());
+                    }
+                    last_prune = Some(std::time::Instant::now());
+                }
+                ids
+            };
+            for id in due {
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    if let Some(Err(e)) = run_check(&handle, id) {
+                        eprintln!("news: {e}");
+                    }
+                });
+            }
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    });
+}
+
 // ---------- window and tray ----------
 
 fn show_main(app: &AppHandle) {
@@ -256,12 +413,20 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let store = Store::open(&dir.join("cocoadesk.db")).map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
-            app.manage(AppState { store: Mutex::new(store), files: Mutex::new(HashMap::new()), next_file: AtomicU64::new(1) });
+            app.manage(AppState {
+                store: Mutex::new(store),
+                files: Mutex::new(HashMap::new()),
+                next_file: AtomicU64::new(1),
+                fetcher: HttpFetcher::new(),
+                checking: Mutex::new(HashSet::new()),
+            });
             build_tray(app.handle())?;
             start_timer(app.handle().clone());
+            start_news_timer(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -292,7 +457,18 @@ pub fn run() {
             pick_timetable,
             import_preview,
             import_exclusions,
-            import_commit
+            import_commit,
+            news_view,
+            save_topic,
+            delete_topic,
+            check_topic_now,
+            find_feed,
+            set_story_read,
+            mark_topic_read,
+            set_saved,
+            block_site,
+            unblock_site,
+            open_story
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");
