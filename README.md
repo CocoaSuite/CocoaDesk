@@ -15,6 +15,16 @@ CocoaDesk is the personal desk of the Cocoa suite: one place to organise, keep a
 - **Excel import** of university timetables: pick your group, see every class it found and untick the ones that aren't yours. It reads alternating weeks (`top / bottom`), merged lecture cells, teachers, rooms, remarks and month ranges, and takes the bell schedule from the file. Importing a newer version of the file updates classes in place and remembers what you unticked.
 - Keeps running in the notification area when the window is closed, so marking and reminders carry on (can be turned off).
 
+### Tasks
+
+Boards of lists and cards, in the spirit of Trello.
+
+- **Several boards**, each with its own lists. New boards start with *To do*, *In progress*, *Review* and *Done*; add, rename, reorder or delete lists from a list's name.
+- **Cards** have a title, labels (coloured bars, named per board), a due date, a description and a checklist. Add one quickly with the **+** on a list, or open a card for everything.
+- **Drag cards** between and within lists. A card lifts and tilts as you swing it, the others slide aside to make room, and it settles into place with a small bounce. A quiet click plays when it lifts off and when it lands, a little different every time (pitch, brightness, loudness and left/right placement). Esc puts the card back. Sounds and their volume are in Board settings.
+- **Salary (optional).** Enter what the client pays in dollars or rubles. The service's commission (10% by default, set per board, or per card when a job is different) is taken off, and the card shows what you actually get in both currencies. The dollar rate is the Central Bank of Russia's, updated daily, or one you type in yourself. A card marked **paid** keeps the rate of that day.
+- **Monthly earnings**: what you've earned this month so far across all boards, what's still waiting on the board, and the last six months with totals and a monthly average. A card counts in the month it reached a list that *counts as done*. Figures update live while you drag a card into or out of Done.
+
 ### Moodboards
 
 Boards of reference pictures in the spirit of PureRef, with Figma-like sections.
@@ -54,7 +64,7 @@ cargo test -p cocoadesk-core
 
 The project is split into:
 
-- `crates/core` — calendar rules, news matching and feeds, storage (SQLite), the timetable import, moodboard storage and its picture files, and the background timer logic. Plain Rust with unit tests; no UI.
+- `crates/core` — calendar rules, news matching and feeds, storage (SQLite), the timetable import, moodboard storage and its picture files, task boards with salaries and the exchange rate, and the background timer logic. Plain Rust with unit tests; no UI.
 - `src-tauri` — the desktop shell: window, notification-area icon, timer threads (classes and news), the `boardimg:` protocol that serves moodboard pictures, and the commands the interface calls.
 - `src` — the interface (TypeScript, no framework), styled after CocoaAuthor.
 

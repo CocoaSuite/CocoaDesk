@@ -55,9 +55,9 @@ export async function importFlow(semesters: Semester[], currentId: number | null
         h('td', { class: 'c' }, cb),
         h('td', {}, String(it.period)),
         h('td', {}, it.weeks === 'every' ? h('span', { class: 'chip' }, 'Every week') : h('span', { class: 'chip sel' }, it.weeks === 'top' ? 'Top week' : 'Bottom week')),
-        h('td', {}, it.subject, h('span', { class: 'sub' }, [KIND_LABEL[it.kind], it.shared ? 'whole stream' : ''].filter(Boolean).join(' · '))),
+        h('td', {}, it.subject, h('span', { class: 'sub' }, [KIND_LABEL[it.kind], it.shared ? 'whole stream' : ''].filter(Boolean).join(', '))),
         h('td', {}, it.room || '—', it.teacher ? h('span', { class: 'sub' }, it.teacher) : null),
-        h('td', {}, [describeMonths(it), it.note].filter(Boolean).join(' · ') || ''))
+        h('td', {}, [describeMonths(it), it.note].filter(Boolean).join('; ') || ''))
       cb.addEventListener('change', () => {
         cb.checked ? included.add(it.key) : included.delete(it.key)
         tr.className = cb.checked ? '' : 'off'

@@ -143,3 +143,44 @@ export const boardApi = {
 
 /** Where the window loads a stored board image from. */
 export const boardImageUrl = (id: string) => convertFileSrc(id, 'boardimg')
+
+// ---------- tasks ----------
+
+export type Currency = 'usd' | 'rub'
+export interface Label { id: string; name: string; color: string }
+export interface BoardInput { name: string; color: string; commission: number; labels: Label[] }
+export interface TaskBoard extends BoardInput { id: number; cards: number }
+export interface TaskList { id: number; boardId: number; name: string; isDone: boolean; position: number }
+export interface ChecklistItem { text: string; done: boolean }
+export interface Salary { amount: number; currency: Currency; commission: number | null }
+export interface CardInput {
+  title: string; description: string; labels: string[]; due: string | null; checklist: ChecklistItem[]; salary: Salary | null
+}
+export interface Money {
+  commission: number; grossUsd: number | null; grossRub: number | null; netUsd: number | null; netRub: number | null; rate: number | null
+}
+export interface Card extends CardInput {
+  id: number; listId: number; position: number; paidAt: string | null; lockedRate: number | null
+  doneAt: string | null; createdAt: string; money: Money | null
+}
+export interface ListView extends TaskList { cards: Card[] }
+export interface RateInfo { value: number; date: string | null; manual: boolean }
+export interface MonthEarnings { month: string; netUsd: number; netRub: number; cards: number; unpaidUsd: number }
+export interface TasksView {
+  boards: TaskBoard[]; board: TaskBoard | null; lists: ListView[]; rate: RateInfo | null; months: MonthEarnings[]
+}
+
+export const taskApi = {
+  view: (boardId: number | null) => invoke<TasksView>('tasks_view', { boardId }),
+  saveBoard: (id: number | null, input: BoardInput) => invoke<number>('task_board_save', { id, input }),
+  deleteBoard: (id: number) => invoke<void>('task_board_delete', { id }),
+  saveList: (boardId: number, id: number | null, name: string, isDone: boolean) => invoke<number>('task_list_save', { boardId, id, name, isDone }),
+  deleteList: (id: number) => invoke<void>('task_list_delete', { id }),
+  moveList: (id: number, index: number) => invoke<void>('task_list_move', { id, index }),
+  saveCard: (listId: number, id: number | null, input: CardInput) => invoke<number>('task_card_save', { listId, id, input }),
+  deleteCard: (id: number) => invoke<void>('task_card_delete', { id }),
+  moveCard: (id: number, listId: number, index: number) => invoke<void>('task_card_move', { id, listId, index }),
+  setPaid: (id: number, paid: boolean) => invoke<void>('task_card_paid', { id, paid }),
+  refreshRate: () => invoke<RateInfo>('rate_refresh'),
+  setManualRate: (value: number | null) => invoke<void>('rate_set_manual', { value })
+}

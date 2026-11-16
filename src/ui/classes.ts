@@ -51,7 +51,7 @@ export class ClassesScreen {
 
   private updateStatus(v: WeekView) {
     const now = v.today?.entries.find(e => e.status === 'inProgress')
-    if (now) this.onStatus(`In class · ${now.class.subject} · ${fmtMinutes(now.minutesLeft ?? 0)} left`, 'live')
+    if (now) this.onStatus(`In class: ${now.class.subject}, ${fmtMinutes(now.minutesLeft ?? 0)} left`, 'live')
     else if (v.semesters.length) this.onStatus(v.settings.autoMark ? 'Marking classes automatically' : 'Automatic marking is off')
     else this.onStatus('')
   }
@@ -71,8 +71,8 @@ export class ClassesScreen {
     const sem = v.semester!
     const kindWord = v.weekKind === 'top' ? 'top week' : v.weekKind === 'bottom' ? 'bottom week' : null
     const sub = h('div', { class: 'sub' }, sem.name,
-      v.weekNumber && v.weekNumber > 0 && v.weekCount ? ` · week ${v.weekNumber} of ${v.weekCount}` : ' · outside the semester',
-      kindWord ? [' · ', h('b', {}, kindWord)] : null)
+      v.weekNumber && v.weekNumber > 0 && v.weekCount ? `, week ${v.weekNumber} of ${v.weekCount}` : ', outside the semester',
+      kindWord ? [', ', h('b', {}, kindWord)] : null)
 
     const semPick = v.semesters.length > 1
       ? select(v.semesters.map(s => [s.id, s.name] as [number, string]), sem.id, {
@@ -140,7 +140,7 @@ export class ClassesScreen {
         class: 'ghost', 'data-key': `g${g.id}${d.date}`,
         'aria-label': `${g.subject}, ${g.weeks} week only, not this week`,
         onclick: () => this.editClass(g)
-      }, h('span', {}, g.weeks === 'top' ? 'Top week only' : 'Bottom week only'), h('b', {}, `${g.subject} · ${KIND_LABEL[g.kind].toLowerCase()}`)))
+      }, h('span', {}, g.weeks === 'top' ? 'Top week only' : 'Bottom week only'), h('b', {}, `${g.subject} (${KIND_LABEL[g.kind].toLowerCase()})`)))
     }
     if (usable && !entries.length) {
       cell.classList.add('add')
@@ -154,7 +154,7 @@ export class ClassesScreen {
     const c = e.class
     const st = e.status
     const cls = st === 'inProgress' ? 'now' : st
-    const where = [c.room, c.teacher].filter(Boolean).join(' · ')
+    const where = [c.room, c.teacher].filter(Boolean).join(', ')
     const card = h('button', {
       class: 'cls ' + cls, style: `--k:${KIND_VAR(c.kind)}`, 'data-key': `e${c.id}${e.date}`,
       'aria-label': `${c.subject}, ${KIND_LABEL[c.kind]}, ${e.start} to ${e.end}. ${statusText(e)}`,
@@ -168,7 +168,7 @@ export class ClassesScreen {
     where ? h('span', { class: 'w' }, where) : null)
     if (st === 'inProgress') {
       card.append(h('span', { class: 'prog' }, h('i', { style: `width:${Math.round((e.progress ?? 0) * 100)}%` })),
-        h('span', { class: 'now-t' }, `Now · ${fmtMinutes(e.minutesLeft ?? 0)} left`))
+        h('span', { class: 'now-t' }, `Now, ${fmtMinutes(e.minutesLeft ?? 0)} left`))
     } else if (st === 'skipped') card.append(h('span', { class: 'n', style: 'color:var(--warnfg)' }, 'Skipped'))
     else if (st === 'cancelled') card.append(h('span', { class: 'n', style: 'color:var(--bad)' }, 'Cancelled'))
     else if (c.note) card.append(h('span', { class: 'n mute' }, c.note))
@@ -179,7 +179,7 @@ export class ClassesScreen {
     const set = (s: MarkStatus | null, msg: string) => async () => {
       try { await api.setStatus(e.class.id, e.date, s); toast(msg); await this.load() } catch (err) { toast(errText(err)) }
     }
-    const items: MenuItem[] = [{ header: `${e.class.subject} · ${fmtWeekday(e.date)} ${e.start}–${e.end}` }]
+    const items: MenuItem[] = [{ header: `${e.class.subject}, ${fmtWeekday(e.date)} ${e.start}–${e.end}` }]
     const past = ['done', 'skipped', 'ended', 'untracked'].includes(e.status) || (e.status === 'cancelled' && e.minutesUntil == null)
     if (e.status === 'cancelled') items.push({ label: 'Not cancelled after all', run: set(null, 'Class restored') })
     else if (past) {
@@ -205,7 +205,7 @@ export class ClassesScreen {
 
   private todayCard(d: Day): HTMLElement {
     const card = h('section', { class: 'card cardpad', 'aria-label': 'Today' },
-      h('div', { class: 'ch' }, h('span', { class: 'lab' }, `Today · ${fmtWeekday(d.date)}`)))
+      h('div', { class: 'ch' }, h('span', { class: 'lab' }, `Today, ${fmtWeekday(d.date)}`)))
     if (d.breakLabel) card.append(h('div', { class: 'hint' }, `No classes — ${d.breakLabel}.`))
     else if (!d.entries.length) card.append(h('div', { class: 'hint' }, 'No classes today.'))
     for (const e of d.entries) {
@@ -215,7 +215,7 @@ export class ClassesScreen {
         h('span', { class: 'dot ' + (e.status === 'inProgress' ? 'now' : e.status) }, e.status === 'done' ? icon('check') : null),
         h('span', { class: 'b' },
           h('b', {}, e.class.subject),
-          h('span', {}, [KIND_LABEL[e.class.kind], e.class.room].filter(Boolean).join(' · ')),
+          h('span', {}, [KIND_LABEL[e.class.kind], e.class.room].filter(Boolean).join(', ')),
           h('span', { class: 'st ' + tone }, st)),
         h('span', { class: 'tm' }, e.start)))
     }
@@ -231,8 +231,8 @@ export class ClassesScreen {
       const box = (kind: string, label: string, on: boolean) =>
         h('div', { class: on ? 'on' : '' }, h('b', {}, kind === 'top' ? 'Top week' : 'Bottom week'), h('span', {}, label))
       card.append(h('div', { class: 'wk' },
-        box(v.weekKind, `${thisWeek ? 'This week' : 'Shown'} · ${fmtRange(v.monday, addDays(v.monday, 6))}`, true),
-        box(next, `Next · ${fmtRange(addDays(v.monday, 7), addDays(v.monday, 13))}`, false)))
+        box(v.weekKind, `${thisWeek ? 'This week' : 'Shown'}, ${fmtRange(v.monday, addDays(v.monday, 6))}`, true),
+        box(next, `Next, ${fmtRange(addDays(v.monday, 7), addDays(v.monday, 13))}`, false)))
     }
     card.append(h('div', { class: 'hint' },
       `Counting from the week of ${fmtDayMonth(sem.start)}, which is a ${sem.firstWeek} week. Breaks don’t change the count.`),
@@ -303,8 +303,8 @@ export function statusText(e: Entry): string {
     case 'done': return e.markedBy === 'auto' ? `Done automatically at ${e.end}` : 'Marked as done'
     case 'skipped': return 'Skipped'
     case 'cancelled': return 'Cancelled'
-    case 'inProgress': return `In progress · ends ${e.end} · ${fmtMinutes(e.minutesLeft ?? 0)} left`
-    case 'ended': return 'Ended · not marked'
+    case 'inProgress': return `In progress, ends ${e.end}, ${fmtMinutes(e.minutesLeft ?? 0)} left`
+    case 'ended': return 'Ended, not marked'
     case 'untracked': return 'Before it was added'
     case 'upcoming': {
       const m = e.minutesUntil ?? 0

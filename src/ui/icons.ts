@@ -35,7 +35,10 @@ const P: Record<string, string> = {
   help: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01',
   full: 'M4 9V4h5M4 4l6 6M15 4h5v5M20 4l-6 6M20 15v5h-5M20 20l-6-6M9 20H4v-5M4 20l6-6',
   unfull: 'M10 4v6H4M10 10L4 4M14 4v6h6M14 10l6-6M14 20v-6h6M14 14l6 6M10 20v-6H4M10 14l-6 6',
-  fit: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5'
+  fit: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
+  tasks: 'M4 4h16v16H4zM8 12l3 3 5-6',
+  chart: 'M5 20V12M10 20V6M15 20v-9M20 20V9',
+  filter: 'M4 5h16l-6 8v6l-4-2v-4z'
 }
 
 export function icon(name: keyof typeof P | string, cls = 'i'): SVGSVGElement {

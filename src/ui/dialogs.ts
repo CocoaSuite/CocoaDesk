@@ -84,3 +84,16 @@ export function select<T extends string | number>(options: [T, string][], value:
   const s = h('select', attrs, ...options.map(([v, l]) => h('option', { value: String(v), selected: v === value }, l))) as HTMLSelectElement
   return s
 }
+
+/** Asks for one line of text. Resolves to the trimmed text, or undefined if cancelled. */
+export function promptBox(title: string, label: string, value = '', ok = 'Save'): Promise<string | undefined> {
+  const inp = h('input', { type: 'text', value }) as HTMLInputElement
+  const submit = () => { const v = inp.value.trim(); if (v) m.close(v) }
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit() } })
+  const m = modal<string>(title, [
+    field(label, inp),
+    h('div', { class: 'row' }, h('button', { onclick: () => m.close(undefined) }, 'Cancel'), h('button', { class: 'pri', onclick: submit }, ok))
+  ])
+  setTimeout(() => inp.select(), 30)
+  return m.done
+}

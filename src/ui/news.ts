@@ -111,7 +111,7 @@ export class NewsScreen {
     const nSrc = t.feeds.length + (t.search ? 1 : 0)
     parts.push(`${nSrc} ${nSrc === 1 ? 'source' : 'sources'}`)
     if (t.activeFrom && t.activeTo) parts.push(`${t.activeFrom}–${t.activeTo} only`)
-    return h('div', { class: 'nstat' + (busy ? ' busy' : t.enabled ? '' : ' off') }, h('i'), parts.join(' · '))
+    return h('div', { class: 'nstat' + (busy ? ' busy' : t.enabled ? '' : ' off') }, h('i'), parts.join(', '))
   }
 
   private topicPane(v: NewsView): HTMLElement {
@@ -158,7 +158,7 @@ export class NewsScreen {
     }
     const body = h('div', { class: 'bd' },
       h('button', { class: 'tt', 'data-key': `s${it.id}`, onclick: open(it) }, it.title),
-      h('span', { class: 'meta' }, [it.sourceName || it.domain, ago(when)].filter(Boolean).join(' · ')),
+      h('span', { class: 'meta' }, [it.sourceName || it.domain, ago(when)].filter(Boolean).join(', ')),
       it.summary ? h('span', { class: 'sum' }, it.summary) : null,
       tags.childElementCount ? tags : null)
     if (s.also.length && this.expanded.has(it.story)) {
@@ -261,7 +261,7 @@ export class NewsScreen {
       h('button', { onclick: openBrowser }, 'Open in browser'))
     const body = h('div', { class: 'rbody' })
     const when = item ? ago(item.publishedAt ?? item.fetchedAt) : ''
-    const meta = [a?.siteName || item?.sourceName || item?.domain, a?.byline, when].filter(Boolean).join(' · ')
+    const meta = [a?.siteName || item?.sourceName || item?.domain, a?.byline, when].filter(Boolean).join(', ')
     body.append(h('div', { class: 'rmeta' }, meta), h('h1', {}, item?.title || a?.title || ''))
     if (!r && !failure) {
       body.append(h('div', { class: 'rload', role: 'status' }, h('i'), `Getting the article from ${item?.domain || 'the website'}…`))

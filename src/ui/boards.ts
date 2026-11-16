@@ -21,18 +21,18 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+V', 'Paste images, copied web pictures, links or text'],
   ['Wheel', 'Zoom at the pointer'],
   ['Space + drag, middle drag', 'Pan'],
-  ['Shift+1 · Shift+2 · Ctrl+0', 'Fit everything · zoom to selection · 100%'],
+  ['Shift+1, Shift+2, Ctrl+0', 'Fit everything, zoom to selection, 100%'],
   ['Double-click a picture', 'Zoom to it'],
   ['Drag a corner', 'Resize (pictures keep their shape; Shift to stretch)'],
   ['Drag the round handle', 'Rotate (Shift: 15° steps)'],
   ['Alt + drag', 'Move a copy'],
-  ['Ctrl+D · Ctrl+G', 'Duplicate · put the selection in a section'],
-  ['] · [', 'Bring to front · send to back'],
+  ['Ctrl+D, Ctrl+G', 'Duplicate, put the selection in a section'],
+  ['] and [', 'Bring to front, send to back'],
   ['Arrows (Shift)', 'Nudge by 1 (10) pixels'],
-  ['Ctrl+Z · Ctrl+Y', 'Undo · redo'],
+  ['Ctrl+Z, Ctrl+Y', 'Undo, redo'],
   ['Double-click text or a section name', 'Edit it'],
   ['V H S T P A R O E', 'Tools, in toolbar order'],
-  ['F11 · Esc', 'Full screen · leave full screen'],
+  ['F11, Esc', 'Full screen, leave full screen'],
   ['Esc', 'Back to selecting; clear the selection']
 ]
 

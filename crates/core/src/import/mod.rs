@@ -214,7 +214,7 @@ fn find_layout(g: &Grid) -> Result<Layout> {
                     detail.push(t.to_string());
                 }
             }
-            Some(GroupColumn { column: c, label, detail: detail.join(" · ") })
+            Some(GroupColumn { column: c, label, detail: detail.join(", ") })
         })
         .collect::<Vec<_>>();
     if groups.is_empty() {
@@ -412,7 +412,7 @@ mod tests {
     fn finds_groups_and_periods() {
         let p = preview_sheet(&sample(), None).unwrap();
         assert_eq!(p.groups.iter().map(|g| g.label.as_str()).collect::<Vec<_>>(), vec!["ГР-01-26", "ГР-02-26"]);
-        assert_eq!(p.groups[0].detail, "Факультет · Бакалавриат");
+        assert_eq!(p.groups[0].detail, "Факультет, Бакалавриат");
         assert_eq!(p.periods.len(), 2);
         assert_eq!(p.periods[1].start, NaiveTime::from_hms_opt(10, 30, 0).unwrap());
         assert!(p.problems.is_empty(), "{:?}", p.problems);
