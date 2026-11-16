@@ -51,6 +51,18 @@ Boards of reference pictures in the spirit of PureRef, with Figma-like sections.
 
 Matching is plain word comparison with a standard stemmer — no recommendations or ranking; stories are listed newest first.
 
+### Research
+
+- **Search** scholarly databases at once: OpenAlex, arXiv, Semantic Scholar, Europe PMC and **CyberLeninka** (Russian journals with free full text). Filter by years, kind, language, citations and free access, leave out words, and sort by best match, newest or most cited. Duplicates found in several databases are shown once.
+- A **Wikipedia overview** sits above the results when the article matches the query.
+- **Explore** from any paper: papers citing it, its references, and similar papers.
+- **Read inside CocoaDesk**: abstract, full text (when the page allows it) or the free PDF, found through Unpaywall when needed. *Save PDF* keeps a copy. Semantic Scholar's short summary is shown only when it has one, labelled as machine-written; CocoaDesk writes no summaries itself.
+- **Cite** in GOST R 7.0.100–2018 (the default), APA 7 or BibTeX, and copy a whole **reference list** in GOST, Russian works first, then foreign ones.
+- **Library**: saved papers with notes, read/unread, collections, and a link to one of your class subjects. *Add to Tasks* puts a "Read: …" card on a task board.
+- **Watched topics** are checked on their own schedule (from every hour to every few days), with a weekly summary put together from counts and optional notifications.
+- **Block** journals or websites from every search and topic.
+- OpenAlex needs a free API key for regular use, and Semantic Scholar works better with one. Add them in Research settings.
+
 ## Development
 
 Requires Node.js 22 and a stable Rust toolchain. On Windows, WebView2 is already part of the system.

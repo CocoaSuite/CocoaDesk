@@ -4,11 +4,12 @@ import { h } from './util'
 import { logo, icon } from './ui/icons'
 import { ClassesScreen } from './ui/classes'
 import { NewsScreen } from './ui/news'
+import { ResearchScreen } from './ui/research'
 import { BoardsScreen } from './ui/boards'
 import { TasksScreen } from './ui/tasks'
 import { appSettingsDialog } from './ui/appsettings'
 
-type Section = 'classes' | 'tasks' | 'news' | 'boards'
+type Section = 'classes' | 'tasks' | 'news' | 'research' | 'boards'
 
 const app = document.getElementById('app')!
 const status = h('span', { class: 'status', role: 'status' })
@@ -19,19 +20,20 @@ const setStatus = (text: string, cls = '') => {
 
 const classes = new ClassesScreen(setStatus)
 const news = new NewsScreen()
+const research = new ResearchScreen()
 const boards = new BoardsScreen()
 const tasks = new TasksScreen()
-const screens: Record<Section, { el: HTMLElement; load(): Promise<void>; leave?(): void }> = { classes, tasks, news, boards }
+const screens: Record<Section, { el: HTMLElement; load(): Promise<void>; leave?(): void }> = { classes, tasks, news, research, boards }
 
 let current: Section = 'classes'
-try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'classes' || saved === 'boards' || saved === 'tasks') current = saved } catch { /* storage unavailable */ }
+try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'research' || saved === 'classes' || saved === 'boards' || saved === 'tasks') current = saved } catch { /* storage unavailable */ }
 
 const navBtn = (s: Section, label: string, ic: string) =>
   h('button', { 'data-section': s, onclick: () => show(s) }, icon(ic), label)
 const nav = h('nav', { 'aria-label': 'Sections' },
   h('div', { class: 'lbl' }, 'Organize'), navBtn('tasks', 'Tasks', 'tasks'), navBtn('classes', 'Classes', 'cap'),
   h('div', { class: 'lbl' }, 'Collect'), navBtn('boards', 'Moodboards', 'board'),
-  h('div', { class: 'lbl' }, 'Monitor'), navBtn('news', 'News', 'feed'))
+  h('div', { class: 'lbl' }, 'Monitor'), navBtn('news', 'News', 'feed'), navBtn('research', 'Research', 'paper'))
 const shell = h('div', { class: 'shell' }, nav)
 
 function show(s: Section) {
@@ -55,5 +57,8 @@ if (current !== 'classes') void classes.load()
 
 // The background timer announces changes (classes marked, clock ticks).
 void listen('classes:changed', () => void classes.load())
+// Watched research topics are checked in the background too.
+void listen<number>('research:checking', e => research.checking(e.payload))
+void listen<number>('research:changed', e => research.changed(e.payload))
 // Refresh when the window comes back, e.g. after the computer wakes up.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void screens[current].load() })
