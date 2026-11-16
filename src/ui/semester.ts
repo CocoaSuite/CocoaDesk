@@ -68,7 +68,7 @@ export async function semesterDialog(sem: Semester | null): Promise<number | nul
   const drawBreaks = () => {
     if (!sem) { blist.replaceChildren(h('div', { class: 'hint' }, 'You can add holidays and breaks after saving.')); return }
     blist.replaceChildren(...(sem.breaks.length ? sem.breaks.map(b => h('div', {},
-      h('span', {}, `${b.label || 'Break'} · ${b.from === b.to ? fmtDayMonth(b.from) : `${fmtDayMonth(b.from)} – ${fmtDayMonth(b.to)}`}`),
+      h('span', {}, `${b.label || 'Break'}, ${b.from === b.to ? fmtDayMonth(b.from) : `${fmtDayMonth(b.from)} – ${fmtDayMonth(b.to)}`}`),
       h('button', { class: 'ic', 'aria-label': `Remove ${b.label || 'break'}`, onclick: async () => {
         try { await api.deleteBreak(b.id); sem.breaks = sem.breaks.filter(x => x.id !== b.id); drawBreaks() } catch (e) { err.textContent = errText(e) }
       } }, icon('x')))) : [h('div', { class: 'hint' }, 'No breaks.')]))

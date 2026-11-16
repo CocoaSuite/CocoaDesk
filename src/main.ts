@@ -5,8 +5,9 @@ import { logo, icon } from './ui/icons'
 import { ClassesScreen } from './ui/classes'
 import { NewsScreen } from './ui/news'
 import { BoardsScreen } from './ui/boards'
+import { TasksScreen } from './ui/tasks'
 
-type Section = 'classes' | 'news' | 'boards'
+type Section = 'classes' | 'tasks' | 'news' | 'boards'
 
 const app = document.getElementById('app')!
 const status = h('span', { class: 'status', role: 'status' })
@@ -18,15 +19,16 @@ const setStatus = (text: string, cls = '') => {
 const classes = new ClassesScreen(setStatus)
 const news = new NewsScreen()
 const boards = new BoardsScreen()
-const screens: Record<Section, { el: HTMLElement; load(): Promise<void>; leave?(): void }> = { classes, news, boards }
+const tasks = new TasksScreen()
+const screens: Record<Section, { el: HTMLElement; load(): Promise<void>; leave?(): void }> = { classes, tasks, news, boards }
 
 let current: Section = 'classes'
-try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'classes' || saved === 'boards') current = saved } catch { /* storage unavailable */ }
+try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'classes' || saved === 'boards' || saved === 'tasks') current = saved } catch { /* storage unavailable */ }
 
 const navBtn = (s: Section, label: string, ic: string) =>
   h('button', { 'data-section': s, onclick: () => show(s) }, icon(ic), label)
 const nav = h('nav', { 'aria-label': 'Sections' },
-  h('div', { class: 'lbl' }, 'Organize'), navBtn('classes', 'Classes', 'cap'),
+  h('div', { class: 'lbl' }, 'Organize'), navBtn('tasks', 'Tasks', 'tasks'), navBtn('classes', 'Classes', 'cap'),
   h('div', { class: 'lbl' }, 'Collect'), navBtn('boards', 'Moodboards', 'board'),
   h('div', { class: 'lbl' }, 'Monitor'), navBtn('news', 'News', 'feed'))
 const shell = h('div', { class: 'shell' }, nav)

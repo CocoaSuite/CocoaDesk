@@ -21,6 +21,7 @@ use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView, 
 use cocoadesk_core::news::{feed, HttpFetcher, TopicInput};
 use cocoadesk_core::service::{self, ImportDone, ImportRequest, Settings, WeekView};
 use cocoadesk_core::store::{SemesterInput, Store};
+use cocoadesk_core::tasks::{self, BoardInput, CardInput, RateInfo, TasksView};
 
 /// Largest timetable file we read, to keep a wrong pick from eating memory.
 const MAX_FILE_BYTES: u64 = 25 * 1024 * 1024;
@@ -40,6 +41,8 @@ struct AppState {
     images: ImageStore,
     /// Where the window was before the moodboard was pinned on top, to put it back.
     overlay: Mutex<Option<WindowPlace>>,
+    /// When the exchange rate was last asked for, so a failing download isn't retried on every view.
+    rate_tried: Mutex<Option<std::time::Instant>>,
 }
 
 #[derive(Clone, Copy)]
@@ -421,6 +424,113 @@ async fn read_story(app: AppHandle, item_id: i64, refresh: Option<bool>) -> Resu
     .map_err(|e| e.to_string())?
 }
 
+// ---------- tasks ----------
+
+/// Downloads today's dollar rate in the background when the kept one is from an earlier day,
+/// at most once every ten minutes, and tells the window when it arrives.
+fn refresh_rate_if_stale(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let stale = state.store().ok().and_then(|s| s.rate_is_stale(now().date()).ok()).unwrap_or(false);
+    if !stale {
+        return;
+    }
+    {
+        let Ok(mut tried) = state.rate_tried.lock() else { return };
+        if tried.is_some_and(|t| t.elapsed() < Duration::from_secs(600)) {
+            return;
+        }
+        *tried = Some(std::time::Instant::now());
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let state = handle.state::<AppState>();
+        if tasks::refresh_rate(&state.store, &state.fetcher).is_ok() {
+            let _ = handle.emit("tasks:changed", ());
+        }
+    });
+}
+
+#[tauri::command]
+fn tasks_view(app: AppHandle, state: State<AppState>, board_id: Option<i64>) -> Result<TasksView, String> {
+    refresh_rate_if_stale(&app);
+    tasks::tasks_view(&*state.store()?, board_id, now()).map_err(err)
+}
+
+#[tauri::command]
+fn task_board_save(state: State<AppState>, id: Option<i64>, input: BoardInput) -> Result<i64, String> {
+    let store = state.store()?;
+    match id {
+        Some(id) => store.update_task_board(id, &input).map(|_| id),
+        None => store.create_task_board(&input, now()),
+    }
+    .map_err(err)
+}
+
+#[tauri::command]
+fn task_board_delete(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_task_board(id).map_err(err)
+}
+
+#[tauri::command]
+fn task_list_save(state: State<AppState>, board_id: i64, id: Option<i64>, name: String, is_done: bool) -> Result<i64, String> {
+    let store = state.store()?;
+    match id {
+        Some(id) => store.update_task_list(id, &name, is_done, now()).map(|_| id),
+        None => store.add_task_list(board_id, &name, is_done),
+    }
+    .map_err(err)
+}
+
+#[tauri::command]
+fn task_list_delete(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_task_list(id).map_err(err)
+}
+
+#[tauri::command]
+fn task_list_move(state: State<AppState>, id: i64, index: usize) -> Result<(), String> {
+    state.store()?.move_task_list(id, index).map_err(err)
+}
+
+#[tauri::command]
+fn task_card_save(state: State<AppState>, list_id: i64, id: Option<i64>, input: CardInput) -> Result<i64, String> {
+    let store = state.store()?;
+    match id {
+        Some(id) => store.update_task_card(id, &input, now()).map(|_| id),
+        None => store.add_task_card(list_id, &input, now()),
+    }
+    .map_err(err)
+}
+
+#[tauri::command]
+fn task_card_delete(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_task_card(id).map_err(err)
+}
+
+#[tauri::command]
+fn task_card_move(state: State<AppState>, id: i64, list_id: i64, index: usize) -> Result<(), String> {
+    state.store()?.move_task_card(id, list_id, index, now()).map_err(err)
+}
+
+#[tauri::command]
+fn task_card_paid(state: State<AppState>, id: i64, paid: bool) -> Result<(), String> {
+    state.store()?.set_task_card_paid(id, paid, now()).map_err(err)
+}
+
+#[tauri::command]
+async fn rate_refresh(app: AppHandle) -> Result<RateInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        tasks::refresh_rate(&state.store, &state.fetcher).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn rate_set_manual(state: State<AppState>, value: Option<f64>) -> Result<(), String> {
+    state.store()?.set_manual_rate(value).map_err(err)
+}
+
 /// Checks one topic, sends its notifications and tells the UI. Returns `None` if a check of
 /// the same topic is already running.
 fn run_check(app: &AppHandle, id: i64) -> Option<Result<CheckOutcome, String>> {
@@ -438,7 +548,7 @@ fn run_check(app: &AppHandle, id: i64) -> Option<Result<CheckOutcome, String>> {
     }
     if let Ok(out) = &result {
         for item in &out.notify {
-            let body = if item.source_name.is_empty() { item.title.clone() } else { format!("{} · {}", item.title, item.source_name) };
+            let body = if item.source_name.is_empty() { item.title.clone() } else { format!("{} ({})", item.title, item.source_name) };
             let _ = app.notification().builder().title(&out.topic_name).body(body).show();
         }
         if out.notify_more > 0 {
@@ -549,9 +659,9 @@ fn start_timer(app: AppHandle) {
                     for r in &o.reminders {
                         let mut body = format!("{} at {}", cocoadesk_kind(r.kind), r.start.format("%H:%M"));
                         if !r.room.is_empty() {
-                            body.push_str(&format!(" · {}", r.room));
+                            body.push_str(&format!(" in {}", r.room));
                         }
-                        body.push_str(&format!(" · in {} min", r.minutes_until));
+                        body.push_str(&format!(", starts in {} min", r.minutes_until));
                         let _ = app.notification().builder().title(&r.subject).body(body).show();
                     }
                     let minute = (t.date(), t.hour(), t.minute());
@@ -606,6 +716,7 @@ pub fn run() {
                 checking: Mutex::new(HashSet::new()),
                 images,
                 overlay: Mutex::new(None),
+                rate_tried: Mutex::new(None),
             });
             build_tray(app.handle())?;
             start_timer(app.handle().clone());
@@ -663,7 +774,19 @@ pub fn run() {
             board_save,
             board_add_image,
             board_fetch_image,
-            board_overlay
+            board_overlay,
+            tasks_view,
+            task_board_save,
+            task_board_delete,
+            task_list_save,
+            task_list_delete,
+            task_list_move,
+            task_card_save,
+            task_card_delete,
+            task_card_move,
+            task_card_paid,
+            rate_refresh,
+            rate_set_manual
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");

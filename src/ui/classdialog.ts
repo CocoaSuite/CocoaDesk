@@ -11,8 +11,8 @@ export async function classDialog(sem: Semester, c: Class | null, preset?: { wee
   const subject = h('input', { type: 'text', value: v.subject, maxlength: 200 }) as HTMLInputElement
   const kind = select<ClassKind>((Object.keys(KIND_LABEL) as ClassKind[]).map(k => [k, KIND_LABEL[k]]), v.kind)
   const day = select<number>(WEEKDAYS.map((d, i) => [i + 1, d]), v.weekday)
-  const periodOpts: [number, string][] = sem.periods.map(p => [p.number, `${p.number} · ${p.start}–${p.end}`])
-  if (!sem.periods.some(p => p.number === v.period)) periodOpts.push([v.period, `${v.period} · no time set`])
+  const periodOpts: [number, string][] = sem.periods.map(p => [p.number, `${p.number}: ${p.start}–${p.end}`])
+  if (!sem.periods.some(p => p.number === v.period)) periodOpts.push([v.period, `${v.period}: no time set`])
   const period = select<number>(periodOpts, v.period)
   const weeks = select<Weeks>([['every', 'Every week'], ['top', 'Top weeks only'], ['bottom', 'Bottom weeks only']], v.weeks)
   const teacher = h('input', { type: 'text', value: v.teacher, maxlength: 200 }) as HTMLInputElement

@@ -11,5 +11,6 @@ pub mod model;
 pub mod news;
 pub mod service;
 pub mod store;
+pub mod tasks;
 
 pub use error::{Error, Result};

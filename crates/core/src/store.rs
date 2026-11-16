@@ -191,6 +191,45 @@ CREATE TABLE boards (
   updated_at TEXT NOT NULL
 );
 "#,
+    r#"
+CREATE TABLE task_boards (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL,
+  commission REAL NOT NULL DEFAULT 10,
+  labels TEXT NOT NULL DEFAULT '[]',
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE task_lists (
+  id INTEGER PRIMARY KEY,
+  board_id INTEGER NOT NULL REFERENCES task_boards(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  is_done INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX task_lists_board ON task_lists(board_id, position);
+CREATE TABLE task_cards (
+  id INTEGER PRIMARY KEY,
+  list_id INTEGER NOT NULL REFERENCES task_lists(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  labels TEXT NOT NULL DEFAULT '[]',
+  due TEXT,
+  checklist TEXT NOT NULL DEFAULT '[]',
+  salary_amount REAL,
+  salary_currency TEXT CHECK (salary_currency IN ('usd','rub')),
+  commission REAL,
+  paid_at TEXT,
+  locked_rate REAL,
+  done_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX task_cards_list ON task_cards(list_id, position);
+CREATE INDEX task_cards_done ON task_cards(done_at) WHERE done_at IS NOT NULL;
+"#,
 ];
 
 impl Store {

@@ -202,7 +202,7 @@ fn parse_part(text: &str, weeks: Weeks) -> Option<ParsedClass> {
     if subject.is_empty() {
         return None;
     }
-    Some(ParsedClass { weeks, subject, kind, teacher, room, note: notes.join(" · "), months })
+    Some(ParsedClass { weeks, subject, kind, teacher, room, note: notes.join("; "), months })
 }
 
 fn kind_from(token: &str) -> ClassKind {
