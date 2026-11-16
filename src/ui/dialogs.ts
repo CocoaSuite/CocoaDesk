@@ -39,26 +39,27 @@ export function confirmBox(title: string, text: string, ok = 'Delete', danger = 
   return m.done.then(v => !!v)
 }
 
-export type MenuItem = { label: string; danger?: boolean; run: () => void } | { header: string } | 'sep'
+export type MenuItem = { label: string; hint?: string; danger?: boolean; run: () => void } | { header: string } | 'sep'
 
-export function menuAt(anchor: HTMLElement, items: MenuItem[]) {
+/** Opens a menu under a button, or at a point (for right-click menus). */
+export function menuAt(anchor: HTMLElement | { x: number; y: number }, items: MenuItem[]) {
   document.querySelectorAll('.ctx').forEach(e => e.remove())
   const m = h('div', { class: 'ctx', role: 'menu' })
   const done = () => { m.remove(); document.removeEventListener('mousedown', off, true); document.removeEventListener('keydown', esc, true) }
   for (const it of items) {
     if (it === 'sep') m.append(h('hr'))
     else if ('header' in it) m.append(h('div', { class: 'lbl' }, it.header))
-    else m.append(h('button', { role: 'menuitem', class: it.danger ? 'danger' : '', onclick: () => { done(); it.run() } }, it.label))
+    else m.append(h('button', { role: 'menuitem', class: it.danger ? 'danger' : '', onclick: () => { done(); it.run() } }, it.label, it.hint ? h('span', { class: 'kb' }, it.hint) : null))
   }
   document.body.append(m)
-  const r = anchor.getBoundingClientRect()
+  const r = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : { left: anchor.x, bottom: anchor.y }
   const mr = m.getBoundingClientRect()
   m.style.top = Math.max(8, Math.min(r.bottom + 4, innerHeight - mr.height - 8)) + 'px'
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - mr.width - 8)) + 'px'
   ;(m.querySelector('button') as HTMLElement | null)?.focus()
   const off = (e: Event) => { if (!m.contains(e.target as Node)) done() }
   const esc = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') { e.preventDefault(); done(); anchor.focus() }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(); if (anchor instanceof HTMLElement) anchor.focus() }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const bs = [...m.querySelectorAll('button')] as HTMLElement[]

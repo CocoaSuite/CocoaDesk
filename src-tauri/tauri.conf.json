@@ -20,11 +20,12 @@
         "minHeight": 560,
         "backgroundColor": "#121212",
         "center": true,
-        "maximized": true
+        "maximized": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: boardimg: http://boardimg.localhost; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {

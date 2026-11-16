@@ -4,8 +4,9 @@ import { h } from './util'
 import { logo, icon } from './ui/icons'
 import { ClassesScreen } from './ui/classes'
 import { NewsScreen } from './ui/news'
+import { BoardsScreen } from './ui/boards'
 
-type Section = 'classes' | 'news'
+type Section = 'classes' | 'news' | 'boards'
 
 const app = document.getElementById('app')!
 const status = h('span', { class: 'status', role: 'status' })
@@ -16,19 +17,22 @@ const setStatus = (text: string, cls = '') => {
 
 const classes = new ClassesScreen(setStatus)
 const news = new NewsScreen()
-const screens: Record<Section, { el: HTMLElement; load(): Promise<void> }> = { classes, news }
+const boards = new BoardsScreen()
+const screens: Record<Section, { el: HTMLElement; load(): Promise<void>; leave?(): void }> = { classes, news, boards }
 
 let current: Section = 'classes'
-try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'classes') current = saved } catch { /* storage unavailable */ }
+try { const saved = localStorage.getItem('section'); if (saved === 'news' || saved === 'classes' || saved === 'boards') current = saved } catch { /* storage unavailable */ }
 
 const navBtn = (s: Section, label: string, ic: string) =>
   h('button', { 'data-section': s, onclick: () => show(s) }, icon(ic), label)
 const nav = h('nav', { 'aria-label': 'Sections' },
   h('div', { class: 'lbl' }, 'Organize'), navBtn('classes', 'Classes', 'cap'),
+  h('div', { class: 'lbl' }, 'Collect'), navBtn('boards', 'Moodboards', 'board'),
   h('div', { class: 'lbl' }, 'Monitor'), navBtn('news', 'News', 'feed'))
 const shell = h('div', { class: 'shell' }, nav)
 
 function show(s: Section) {
+  if (current !== s) screens[current].leave?.()
   current = s
   try { localStorage.setItem('section', s) } catch { /* storage unavailable */ }
   for (const b of nav.querySelectorAll<HTMLElement>('button[data-section]')) {

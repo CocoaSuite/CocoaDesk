@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 
 export type WeekKind = 'top' | 'bottom'
 export type Weeks = 'every' | 'top' | 'bottom'
@@ -121,3 +121,25 @@ export const newsApi = {
   readStory: (itemId: number, refresh = false) => invoke<Reading>('read_story', { itemId, refresh }),
   openLink: (url: string) => invoke<void>('open_link', { url })
 }
+
+// ---------- moodboards ----------
+
+export interface BoardSummary { id: number; name: string; createdAt: string; updatedAt: string; items: number; cover: string | null }
+export interface Board { id: number; name: string; scene: string }
+
+export const boardApi = {
+  list: () => invoke<BoardSummary[]>('boards_list'),
+  load: (id: number) => invoke<Board>('board_load', { id }),
+  create: (name: string) => invoke<number>('board_create', { name }),
+  rename: (id: number, name: string) => invoke<void>('board_rename', { id, name }),
+  duplicate: (id: number) => invoke<number>('board_duplicate', { id }),
+  remove: (id: number) => invoke<void>('board_delete', { id }),
+  save: (id: number, scene: string) => invoke<void>('board_save', { id, scene }),
+  /** Stores image bytes and returns the image's id. */
+  addImage: (bytes: Uint8Array) => invoke<string>('board_add_image', bytes, { headers: { 'Content-Type': 'application/octet-stream' } }),
+  fetchImage: (url: string) => invoke<string>('board_fetch_image', { url }),
+  overlay: (on: boolean) => invoke<void>('board_overlay', { on })
+}
+
+/** Where the window loads a stored board image from. */
+export const boardImageUrl = (id: string) => convertFileSrc(id, 'boardimg')

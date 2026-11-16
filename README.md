@@ -15,6 +15,18 @@ CocoaDesk is the personal desk of the Cocoa suite: one place to organise, keep a
 - **Excel import** of university timetables: pick your group, see every class it found and untick the ones that aren't yours. It reads alternating weeks (`top / bottom`), merged lecture cells, teachers, rooms, remarks and month ranges, and takes the bell schedule from the file. Importing a newer version of the file updates classes in place and remembers what you unticked.
 - Keeps running in the notification area when the window is closed, so marking and reminders carry on (can be turned off).
 
+### Moodboards
+
+Boards of reference pictures in the spirit of PureRef, with Figma-like sections.
+
+- **Several boards**, each an endless canvas. Switch, rename, duplicate or delete them from the board menu in the toolbar.
+- **Add pictures** by pasting (screenshots, copied images, copied web pictures or image links), dropping files from Explorer, dragging pictures straight out of a browser, or *Add images*. Pictures are copied into CocoaDesk, so a board keeps working if the originals move; the same picture is stored once however often it's used, and pictures no board uses are cleared on the next start.
+- **Arrange**: move, resize from the corners (pictures keep their shape; Shift stretches), rotate with the round handle (Shift snaps to 15°), Alt-drag for a copy, bring to front / send to back, *Original size*. Several items scale and rotate together.
+- **Sections**: draw one with the section tool or wrap the selection (Ctrl+G). Anything inside a section moves with it; drag a section by its name and double-click the name to rename it.
+- **Text** notes and **sketching**: pen, arrows, rectangles and ellipses in nine colours and three thicknesses, plus an eraser. Changing the colour or thickness also restyles what's selected.
+- **Pin on top** turns the window into a small panel that stays above other apps, for drawing or painting next to your references. *Unpin* puts the window back.
+- The wheel zooms at the pointer; Space-drag or the middle button pans; Shift+1 fits everything. Undo and redo cover every change, and the board saves itself as you go. The **?** button lists every shortcut.
+
 ### News
 
 - **Topics** you choose, each checked on its own schedule (every few minutes up to once a week), optionally only between set hours.
@@ -42,11 +54,11 @@ cargo test -p cocoadesk-core
 
 The project is split into:
 
-- `crates/core` — calendar rules, news matching and feeds, storage (SQLite), the timetable import and the background timer logic. Plain Rust with unit tests; no UI.
-- `src-tauri` — the desktop shell: window, notification-area icon, timer threads (classes and news) and the commands the interface calls.
+- `crates/core` — calendar rules, news matching and feeds, storage (SQLite), the timetable import, moodboard storage and its picture files, and the background timer logic. Plain Rust with unit tests; no UI.
+- `src-tauri` — the desktop shell: window, notification-area icon, timer threads (classes and news), the `boardimg:` protocol that serves moodboard pictures, and the commands the interface calls.
 - `src` — the interface (TypeScript, no framework), styled after CocoaAuthor.
 
-Data lives in `%APPDATA%\com.cocoasuite.cocoadesk\cocoadesk.db`.
+Data lives in `%APPDATA%\com.cocoasuite.cocoadesk\cocoadesk.db`; moodboard pictures sit next to it in `board-images`.
 
 To check the importer against a real timetable without adding it to the repository:
 

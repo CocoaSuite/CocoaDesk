@@ -3,6 +3,7 @@
 //! Everything here is deterministic and runs locally. The desktop shell
 //! (`src-tauri`) only wires these pieces to the window, tray and timer.
 
+pub mod boards;
 pub mod calendar;
 pub mod error;
 pub mod import;

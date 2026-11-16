@@ -14,6 +14,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
+use cocoadesk_core::boards::{self, Board, BoardSummary, ImageStore};
 use cocoadesk_core::import::WorkbookPreview;
 use cocoadesk_core::model::{ClassInput, MarkStatus, Period};
 use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView, Reading};
@@ -35,6 +36,17 @@ struct AppState {
     fetcher: HttpFetcher,
     /// Topics being checked right now, so a timer run and "Check now" don't overlap.
     checking: Mutex<HashSet<i64>>,
+    /// Moodboard pictures.
+    images: ImageStore,
+    /// Where the window was before the moodboard was pinned on top, to put it back.
+    overlay: Mutex<Option<WindowPlace>>,
+}
+
+#[derive(Clone, Copy)]
+struct WindowPlace {
+    maximized: bool,
+    size: tauri::PhysicalSize<u32>,
+    position: tauri::PhysicalPosition<i32>,
 }
 
 impl AppState {
@@ -174,6 +186,119 @@ fn import_exclusions(state: State<AppState>, semester_id: i64) -> Result<Vec<Str
 fn import_commit(state: State<AppState>, token: String, request: ImportRequest) -> Result<ImportDone, String> {
     let mut store = state.store()?;
     state.file(&token, |f| service::commit_import(&mut store, &f.bytes, &request, now()))?.map_err(err)
+}
+
+// ---------- moodboards ----------
+
+#[tauri::command]
+fn boards_list(state: State<AppState>) -> Result<Vec<BoardSummary>, String> {
+    state.store()?.boards().map_err(err)
+}
+
+#[tauri::command]
+fn board_load(state: State<AppState>, id: i64) -> Result<Board, String> {
+    state.store()?.board(id).map_err(err)
+}
+
+#[tauri::command]
+fn board_create(state: State<AppState>, name: String) -> Result<i64, String> {
+    state.store()?.create_board(&name, now()).map_err(err)
+}
+
+#[tauri::command]
+fn board_rename(state: State<AppState>, id: i64, name: String) -> Result<(), String> {
+    state.store()?.rename_board(id, &name).map_err(err)
+}
+
+#[tauri::command]
+fn board_duplicate(state: State<AppState>, id: i64) -> Result<i64, String> {
+    state.store()?.duplicate_board(id, now()).map_err(err)
+}
+
+#[tauri::command]
+fn board_delete(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_board(id).map_err(err)
+}
+
+#[tauri::command]
+fn board_save(state: State<AppState>, id: i64, scene: String) -> Result<(), String> {
+    state.store()?.save_board(id, &scene, now()).map_err(err)
+}
+
+/// Stores a pasted, dropped or chosen picture. The bytes arrive as the raw request body.
+#[tauri::command]
+async fn board_add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => state.images.put(bytes).map_err(err),
+        _ => Err("No image was sent.".into()),
+    }
+}
+
+/// Downloads a picture dragged or pasted from a web page.
+#[tauri::command]
+async fn board_fetch_image(app: AppHandle, url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        boards::download_image(&state.fetcher, &state.images, &url).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Pins the window on top of other apps as a small reference panel, or puts it back.
+#[tauri::command]
+fn board_overlay(window: tauri::WebviewWindow, state: State<AppState>, on: bool) -> Result<(), String> {
+    let mut saved = state.overlay.lock().map_err(|_| "Internal error.".to_string())?;
+    let e = |e: tauri::Error| e.to_string();
+    if on {
+        if saved.is_none() {
+            *saved = Some(WindowPlace {
+                maximized: window.is_maximized().map_err(e)?,
+                size: window.outer_size().map_err(e)?,
+                position: window.outer_position().map_err(e)?,
+            });
+        }
+        window.unmaximize().map_err(e)?;
+        window.set_min_size(Some(tauri::LogicalSize::new(240.0, 180.0))).map_err(e)?;
+        let scale = window.scale_factor().map_err(e)?;
+        let size = tauri::LogicalSize::new(560.0, 440.0).to_physical::<u32>(scale);
+        window.set_size(size).map_err(e)?;
+        // Top-right corner of the screen the window is on, clear of the edge.
+        if let Ok(Some(m)) = window.current_monitor() {
+            let margin = (24.0 * scale) as i32;
+            let x = m.position().x + m.size().width as i32 - size.width as i32 - margin;
+            let y = m.position().y + margin * 2;
+            window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(e)?;
+        }
+        window.set_always_on_top(true).map_err(e)?;
+    } else {
+        window.set_always_on_top(false).map_err(e)?;
+        window.set_min_size(Some(tauri::LogicalSize::new(900.0, 560.0))).map_err(e)?;
+        if let Some(place) = saved.take() {
+            window.set_size(place.size).map_err(e)?;
+            window.set_position(place.position).map_err(e)?;
+            if place.maximized {
+                window.maximize().map_err(e)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Serves moodboard pictures to the window at `boardimg://localhost/<id>`.
+fn serve_image(app: &AppHandle, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let id = path.trim_start_matches('/');
+    let found = app.try_state::<AppState>().map(|s| s.images.get(id));
+    match found {
+        Some(Ok((bytes, kind))) => tauri::http::Response::builder()
+            .header("Content-Type", kind.mime())
+            // An id is the hash of the picture, so it never changes.
+            .header("Cache-Control", "public, max-age=31536000, immutable")
+            .header("X-Content-Type-Options", "nosniff")
+            .body(bytes),
+        _ => tauri::http::Response::builder().status(404).body(Vec::new()),
+    }
+    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }
 
 // ---------- news ----------
@@ -460,15 +585,27 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .register_asynchronous_uri_scheme_protocol("boardimg", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(serve_image(&app, &path)));
+        })
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let store = Store::open(&dir.join("cocoadesk.db")).map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            let images = ImageStore::new(dir.join("board-images"));
+            // Pictures no board uses any more are removed at start, never while boards are being edited.
+            if let Ok(in_use) = store.board_images_in_use() {
+                images.collect_garbage(&in_use);
+            }
             app.manage(AppState {
                 store: Mutex::new(store),
                 files: Mutex::new(HashMap::new()),
                 next_file: AtomicU64::new(1),
                 fetcher: HttpFetcher::new(),
                 checking: Mutex::new(HashSet::new()),
+                images,
+                overlay: Mutex::new(None),
             });
             build_tray(app.handle())?;
             start_timer(app.handle().clone());
@@ -516,7 +653,17 @@ pub fn run() {
             unblock_site,
             open_story,
             open_link,
-            read_story
+            read_story,
+            boards_list,
+            board_load,
+            board_create,
+            board_rename,
+            board_duplicate,
+            board_delete,
+            board_save,
+            board_add_image,
+            board_fetch_image,
+            board_overlay
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");

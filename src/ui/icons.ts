@@ -15,7 +15,25 @@ const P: Record<string, string> = {
   refresh: 'M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4',
   bookmark: 'M6 3h12v18l-6-4-6 4z',
   ban: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
-  more: 'M5 12h.01M12 12h.01M19 12h.01'
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  board: 'M4 4h7v9H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 15h7v5H4z',
+  cursor: 'M5 3l14 7-6 2-2 6z',
+  hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V11M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V5.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5a6 6 0 0 1-4.6-2.2L3.5 16a1.6 1.6 0 0 1 2.4-2.1L8 16',
+  frame: 'M7 3v18M17 3v18M3 7h18M3 17h18',
+  text: 'M5 7V5h14v2M12 5v14M9 19h6',
+  pen: 'M3 17c3-6 5-6 7-2s4 4 6-1 3-5 5-3',
+  arrow: 'M5 19L19 5M10 5h9v9',
+  rect: 'M4 6h16v12H4z',
+  ellipse: 'M12 5c5 0 9 3.1 9 7s-4 7-9 7-9-3.1-9-7 4-7 9-7z',
+  eraser: 'M8 20h12M5.5 14.5l8-8a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H8.5zM9.5 10.5l5 5',
+  undo: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
+  pin: 'M9 4h6l-1 6 4 4H6l4-4zM12 14v7',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
+  down: 'M6 9l6 6 6-6',
+  minus: 'M5 12h14',
+  help: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01',
+  fit: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5'
 }
 
 export function icon(name: keyof typeof P | string, cls = 'i'): SVGSVGElement {

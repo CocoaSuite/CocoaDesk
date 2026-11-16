@@ -231,6 +231,10 @@ pub trait Fetch: Send + Sync {
     fn get_page(&self, url: &str) -> Result<Page> {
         Ok(Page { bytes: self.get(url)?, content_type: String::new(), final_url: url.to_string() })
     }
+    /// Downloads an image, allowing larger files than pages.
+    fn get_image(&self, url: &str) -> Result<Vec<u8>> {
+        self.get(url)
+    }
     /// Posts a URL-encoded form.
     fn post_form(&self, _url: &str, _body: &str) -> Result<Vec<u8>> {
         Err(Error::invalid("Not supported."))
@@ -242,6 +246,7 @@ pub struct HttpFetcher {
 }
 
 const MAX_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
 impl HttpFetcher {
     pub fn new() -> Self {
@@ -307,6 +312,22 @@ impl Fetch for HttpFetcher {
             .read_to_vec()
             .map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))?;
         Ok(Page { bytes, content_type, final_url })
+    }
+
+    fn get_image(&self, url: &str) -> Result<Vec<u8>> {
+        let host = host_of(url);
+        // Some websites only hand out their pictures to pages of their own.
+        let referer = url::Url::parse(url).ok().map(|u| format!("{}/", u.origin().ascii_serialization()));
+        let mut req = self.agent.get(url).header("Accept", "image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5");
+        if let Some(r) = &referer {
+            req = req.header("Referer", r);
+        }
+        let mut resp = req.call().map_err(|e| net_error(&host, e))?;
+        resp.body_mut()
+            .with_config()
+            .limit(MAX_IMAGE_BYTES)
+            .read_to_vec()
+            .map_err(|e| Error::invalid(format!("Couldn't download the image from {host}: {e}")))
     }
 
     fn post_form(&self, url: &str, body: &str) -> Result<Vec<u8>> {

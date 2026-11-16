@@ -181,6 +181,16 @@ CREATE TABLE news_articles (
   fetched_at TEXT NOT NULL
 );
 "#,
+    r#"
+CREATE TABLE boards (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  scene TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+"#,
 ];
 
 impl Store {
