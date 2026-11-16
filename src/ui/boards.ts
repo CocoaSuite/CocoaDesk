@@ -32,6 +32,7 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl+Z · Ctrl+Y', 'Undo · redo'],
   ['Double-click text or a section name', 'Edit it'],
   ['V H S T P A R O E', 'Tools, in toolbar order'],
+  ['F11 · Esc', 'Full screen · leave full screen'],
   ['Esc', 'Back to selecting; clear the selection']
 ]
 
@@ -43,12 +44,15 @@ export class BoardsScreen {
   private boardId: number | null = null
   private loaded = false
   private pinned = false
+  private full = false
+  private fullTimer: ReturnType<typeof setTimeout> | undefined
   private saveTimer: ReturnType<typeof setTimeout> | undefined
   private dirty = false
   private saving: Promise<void> = Promise.resolve()
 
   private bar = h('div', { class: 'btools', role: 'toolbar', 'aria-label': 'Board tools' })
   private pinbar = h('div', { class: 'pinbar' })
+  private fullbar = h('div', { class: 'fullbar' })
   private wrap = h('div', { class: 'bwrap' })
   private nameBtn = h('button', { class: 'bname', 'aria-haspopup': 'true', onclick: () => this.openPicker() })
   private zoomLbl = h('button', { class: 'zl', title: 'Zoom options', onclick: () => this.zoomMenu() })
@@ -62,7 +66,8 @@ export class BoardsScreen {
     this.editor.onChange = what => this.scheduleSave(what === 'scene' ? 400 : 1500)
     this.editor.onState = () => this.refreshBar()
     this.buildBar()
-    this.wrap.append(this.editor.el, this.pinbar)
+    this.wrap.append(this.editor.el, this.pinbar, this.fullbar)
+    document.addEventListener('keydown', e => this.fullKey(e), true)
     window.addEventListener('beforeunload', () => void this.flush())
     document.addEventListener('visibilitychange', () => { if (document.hidden) void this.flush() })
   }
@@ -94,11 +99,15 @@ export class BoardsScreen {
         h('button', { title: 'Zoom in (Ctrl+=)', 'aria-label': 'Zoom in', onclick: () => this.editor.zoomBy(1.25) }, icon('plus'))),
       h('button', { onclick: () => this.editor.pickFiles(), title: 'Add pictures from your computer', 'aria-label': 'Add images' }, icon('image'), h('span', { class: 'bl' }, 'Add images')),
       h('button', { onclick: () => void this.setPinned(true), title: 'Pin on top: keep a small board window above other apps', 'aria-label': 'Pin on top' }, icon('pin'), h('span', { class: 'bl' }, 'Pin on top')),
+      h('button', { class: 'ic', title: 'Full screen: hide everything but the board (F11)', 'aria-label': 'Full screen', onclick: () => this.setFull(true) }, icon('full')),
       h('button', { class: 'ic', title: 'Keyboard shortcuts', 'aria-label': 'Keyboard shortcuts', onclick: () => this.showHelp() }, icon('help')))
     this.pinbar.append(
       h('button', { onclick: () => void this.setPinned(false), title: 'Back to the full window' }, icon('pin'), 'Unpin'),
       h('button', { class: 'ic', title: 'Fit everything (Shift+1)', 'aria-label': 'Fit everything', onclick: () => this.editor.fitAll() }, icon('fit')),
       h('button', { class: 'ic', title: 'Add images', 'aria-label': 'Add images', onclick: () => this.editor.pickFiles() }, icon('image')))
+    this.fullbar.append(
+      h('button', { onclick: () => { this.setFull(false, true); void this.setPinned(true) }, title: 'Pin on top: keep a small board window above other apps' }, icon('pin'), 'Pin on top'),
+      h('button', { class: 'ic exit', title: 'Exit full screen (Esc or F11)', 'aria-label': 'Exit full screen', onclick: () => this.setFull(false) }, icon('unfull')))
   }
 
   private refreshBar() {
@@ -165,6 +174,7 @@ export class BoardsScreen {
 
   /** Called when another section is opened. */
   leave() {
+    this.setFull(false, true)
     this.editor.finishEdit()
     void this.flush()
   }
@@ -293,6 +303,42 @@ export class BoardsScreen {
     if (!on) this.editor.el.focus({ preventScroll: true })
     // Frame the work once the window has settled at its new size.
     for (const ms of [120, 450]) setTimeout(() => this.editor.fitSelection(), ms)
+  }
+
+  /** Full screen: the interface slides away and the board fills the window. */
+  private setFull(on: boolean, instant = false) {
+    if (on && (this.pinned || !this.el.contains(this.wrap))) return
+    if (on === this.full && !(instant && document.body.classList.contains('bfull'))) return
+    this.full = on
+    clearTimeout(this.fullTimer)
+    const body = document.body.classList
+    const r0 = this.editor.el.getBoundingClientRect()
+    const settle = () => {
+      body.remove('bfull')
+      const r1 = this.editor.el.getBoundingClientRect()
+      this.editor.panBy(r0.left - r1.left, r0.top - r1.top)
+    }
+    if (on) {
+      body.add('bfull')
+      const r1 = this.editor.el.getBoundingClientRect()
+      this.editor.panBy(r0.left - r1.left, r0.top - r1.top)
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (this.full) body.add('bhide') }))
+    } else {
+      body.remove('bhide')
+      if (instant) settle()
+      else this.fullTimer = setTimeout(settle, 280)
+    }
+    this.editor.el.focus({ preventScroll: true })
+  }
+
+  private fullKey(e: KeyboardEvent) {
+    if (!this.el.isConnected || e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.key === 'F11') { e.preventDefault(); e.stopPropagation(); this.setFull(!this.full); return }
+    if (e.key !== 'Escape' || !this.full || document.querySelector('.modal,.ctx')) return
+    const t = e.target as HTMLElement | null
+    if (t?.isContentEditable || t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA') return
+    e.preventDefault(); e.stopPropagation()
+    this.setFull(false)
   }
 
   private showHelp() {

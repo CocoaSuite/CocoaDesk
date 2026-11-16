@@ -33,6 +33,8 @@ const P: Record<string, string> = {
   down: 'M6 9l6 6 6-6',
   minus: 'M5 12h14',
   help: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01',
+  full: 'M4 9V4h5M4 4l6 6M15 4h5v5M20 4l-6 6M20 15v5h-5M20 20l-6-6M9 20H4v-5M4 20l6-6',
+  unfull: 'M10 4v6H4M10 10L4 4M14 4v6h6M14 10l6-6M14 20v-6h6M14 14l6 6M10 20v-6H4M10 14l-6 6',
   fit: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5'
 }
 

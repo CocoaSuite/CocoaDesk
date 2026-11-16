@@ -351,6 +351,19 @@ body.pinned .shell>main.boardmain{grid-template-rows:minmax(0,1fr)}
 body.pinned .pinbar{display:flex;gap:4px;position:absolute;top:8px;left:8px;z-index:5;opacity:.35;transition:opacity .15s}
 body.pinned .pinbar:hover,body.pinned .pinbar:focus-within{opacity:1}
 body.pinned .pinbar button{background:rgba(26,26,26,.92)}
+.fullbar{display:none}
+#top,.shell>nav,.btools{transition:transform .26s cubic-bezier(.4,0,.2,1)}
+body.bfull #top,body.bfull .shell>nav,body.bfull .btools{position:relative;z-index:6}
+body.bfull .bwrap{position:fixed;inset:0;z-index:5}
+body.bhide #top{transform:translateY(-100%)}
+body.bhide .shell>nav{transform:translateX(-100%)}
+body.bhide .btools{transform:translateY(-100%)}
+body.bfull .fullbar{display:flex;gap:4px;position:absolute;top:8px;right:8px;z-index:5;opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s}
+body.bhide .fullbar{opacity:1;transform:none;transition-delay:.12s}
+.fullbar button{background:rgba(26,26,26,.92)}
+.fullbar .exit{opacity:.4;transition:opacity .15s}
+.fullbar .exit:hover,.fullbar .exit:focus-visible{opacity:1}
+@media (prefers-reduced-motion:reduce){#top,.shell>nav,.btools,.fullbar{transition:none!important}}
 .bpick{min-width:270px;max-width:360px;max-height:70vh;overflow:auto}
 .bpick button{gap:10px;white-space:normal;text-align:left}
 .bpick button.cur{background:var(--selbg);color:#fff}

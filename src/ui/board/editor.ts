@@ -190,6 +190,8 @@ export class BoardEditor {
     this.view = { zoom, x: screen.x - w.x * zoom, y: screen.y - w.y * zoom }
     this.viewChanged()
   }
+  /** Shifts the view by a screen distance, e.g. to keep the board still while its area moves. */
+  panBy(dx: number, dy: number) { if (!dx && !dy) return; this.view = { ...this.view, x: this.view.x + dx, y: this.view.y + dy }; this.viewChanged() }
   zoomBy(f: number) { this.zoomAt({ x: this.el.clientWidth / 2, y: this.el.clientHeight / 2 }, this.view.zoom * f) }
   zoomTo(z: number) { this.zoomAt({ x: this.el.clientWidth / 2, y: this.el.clientHeight / 2 }, z) }
 
