@@ -1,5 +1,7 @@
 //! The CocoaDesk desktop shell: window, tray, background timer and the commands the UI calls.
 
+mod appicon;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
@@ -146,6 +148,29 @@ fn set_status(state: State<AppState>, class_id: i64, date: String, status: Optio
 #[tauri::command]
 fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), String> {
     settings.save(&*state.store()?).map_err(err)
+}
+
+#[tauri::command]
+fn app_icon(state: State<AppState>) -> Result<String, String> {
+    Ok(appicon::current(&*state.store()?))
+}
+
+/// Switches the app icon; existing CocoaDesk shortcuts follow it.
+#[tauri::command]
+async fn set_app_icon(app: AppHandle, state: State<'_, AppState>, theme: String) -> Result<String, String> {
+    if !appicon::valid(&theme) {
+        return Err("Unknown icon.".into());
+    }
+    appicon::save(&*state.store()?, &theme)?;
+    appicon::apply(&app, &theme, true);
+    Ok(theme)
+}
+
+/// Puts a CocoaDesk shortcut with the chosen icon on the desktop.
+#[tauri::command]
+async fn create_shortcut(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let theme = appicon::current(&*state.store()?);
+    appicon::shortcuts(&app, &theme, true)
 }
 
 #[derive(Serialize)]
@@ -719,6 +744,10 @@ pub fn run() {
                 rate_tried: Mutex::new(None),
             });
             build_tray(app.handle())?;
+            let theme = appicon::current(&*app.state::<AppState>().store()?);
+            if theme != appicon::THEMES[0] {
+                appicon::apply(app.handle(), &theme, false);
+            }
             start_timer(app.handle().clone());
             start_news_timer(app.handle().clone());
             Ok(())
@@ -748,6 +777,9 @@ pub fn run() {
             delete_class,
             set_status,
             save_settings,
+            app_icon,
+            set_app_icon,
+            create_shortcut,
             pick_timetable,
             import_preview,
             import_exclusions,
