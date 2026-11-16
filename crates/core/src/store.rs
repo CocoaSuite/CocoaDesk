@@ -173,6 +173,14 @@ CREATE TABLE news_blocked_sites (
   domain TEXT PRIMARY KEY
 );
 "#,
+    r#"
+CREATE TABLE news_articles (
+  item_id INTEGER PRIMARY KEY REFERENCES news_items(id) ON DELETE CASCADE,
+  article TEXT,
+  error TEXT,
+  fetched_at TEXT NOT NULL
+);
+"#,
 ];
 
 impl Store {

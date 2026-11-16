@@ -216,9 +216,25 @@ pub fn search_url(engine: SearchEngine, cfg: &TopicConfig, global_blocked: &[Str
 
 // ---------- fetching ----------
 
+/// A downloaded page.
+#[derive(Clone, Debug, Default)]
+pub struct Page {
+    pub bytes: Vec<u8>,
+    pub content_type: String,
+    /// Where the page ended up after redirects.
+    pub final_url: String,
+}
+
 /// Downloads a web address. The app uses [`HttpFetcher`]; tests use canned responses.
 pub trait Fetch: Send + Sync {
     fn get(&self, url: &str) -> Result<Vec<u8>>;
+    fn get_page(&self, url: &str) -> Result<Page> {
+        Ok(Page { bytes: self.get(url)?, content_type: String::new(), final_url: url.to_string() })
+    }
+    /// Posts a URL-encoded form.
+    fn post_form(&self, _url: &str, _body: &str) -> Result<Vec<u8>> {
+        Err(Error::invalid("Not supported."))
+    }
 }
 
 pub struct HttpFetcher {
@@ -231,7 +247,11 @@ impl HttpFetcher {
     pub fn new() -> Self {
         let config = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(25)))
-            .user_agent(concat!("CocoaDesk/", env!("CARGO_PKG_VERSION"), " (+https://github.com/CocoaSuite/CocoaDesk)"))
+            // Many news websites turn away anything that doesn't look like a browser.
+            .user_agent(concat!(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36 CocoaDesk/",
+                env!("CARGO_PKG_VERSION")
+            ))
             .build();
         HttpFetcher { agent: config.into() }
     }
@@ -243,9 +263,31 @@ impl Default for HttpFetcher {
     }
 }
 
+fn host_of(url: &str) -> String {
+    url::Url::parse(url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_else(|| url.to_string())
+}
+
+fn net_error(host: &str, e: ureq::Error) -> Error {
+    Error::invalid(match e {
+        ureq::Error::StatusCode(404) => format!("{host} says the page doesn't exist (404)."),
+        ureq::Error::StatusCode(403) | ureq::Error::StatusCode(401) => format!("{host} refused the request."),
+        ureq::Error::StatusCode(429) => format!("{host} asked us to slow down; trying again later."),
+        ureq::Error::StatusCode(c) => format!("{host} answered with an error ({c})."),
+        ureq::Error::Timeout(_) => format!("{host} took too long to answer."),
+        ureq::Error::HostNotFound => format!("Couldn't find {host}. Are you online?"),
+        ureq::Error::Io(_) | ureq::Error::ConnectionFailed => format!("Couldn't connect to {host}."),
+        other => format!("Couldn't load {host}: {other}"),
+    })
+}
+
 impl Fetch for HttpFetcher {
     fn get(&self, url: &str) -> Result<Vec<u8>> {
-        let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_else(|| url.to_string());
+        Ok(self.get_page(url)?.bytes)
+    }
+
+    fn get_page(&self, url: &str) -> Result<Page> {
+        use ureq::ResponseExt;
+        let host = host_of(url);
         let mut resp = self
             .agent
             .get(url)
@@ -253,19 +295,28 @@ impl Fetch for HttpFetcher {
                 "Accept",
                 "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, text/html;q=0.8, */*;q=0.5",
             )
+            .header("Accept-Language", "ru,en;q=0.8")
             .call()
-            .map_err(|e| {
-                Error::invalid(match e {
-                    ureq::Error::StatusCode(404) => format!("{host} says the page doesn't exist (404)."),
-                    ureq::Error::StatusCode(403) | ureq::Error::StatusCode(401) => format!("{host} refused the request."),
-                    ureq::Error::StatusCode(429) => format!("{host} asked us to slow down; trying again later."),
-                    ureq::Error::StatusCode(c) => format!("{host} answered with an error ({c})."),
-                    ureq::Error::Timeout(_) => format!("{host} took too long to answer."),
-                    ureq::Error::HostNotFound => format!("Couldn't find {host}. Are you online?"),
-                    ureq::Error::Io(_) | ureq::Error::ConnectionFailed => format!("Couldn't connect to {host}."),
-                    other => format!("Couldn't load {host}: {other}"),
-                })
-            })?;
+            .map_err(|e| net_error(&host, e))?;
+        let final_url = resp.get_uri().to_string();
+        let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+        let bytes = resp
+            .body_mut()
+            .with_config()
+            .limit(MAX_BYTES)
+            .read_to_vec()
+            .map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))?;
+        Ok(Page { bytes, content_type, final_url })
+    }
+
+    fn post_form(&self, url: &str, body: &str) -> Result<Vec<u8>> {
+        let host = host_of(url);
+        let mut resp = self
+            .agent
+            .post(url)
+            .header("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
+            .send(body)
+            .map_err(|e| net_error(&host, e))?;
         resp.body_mut().with_config().limit(MAX_BYTES).read_to_vec().map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))
     }
 }

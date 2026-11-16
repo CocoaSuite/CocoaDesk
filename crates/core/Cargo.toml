@@ -7,7 +7,10 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+ammonia = "4"
 calamine = "0.30"
+dom_smoothie = "0.12"
+encoding_rs = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 feed-rs = "2"
 regex = "1"

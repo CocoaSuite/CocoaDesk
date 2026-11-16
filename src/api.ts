@@ -94,9 +94,16 @@ export interface NewsItem {
   publishedAt: string | null; fetchedAt: string; read: boolean; saved: boolean; matched: string[]; story: string
 }
 export interface Story { lead: NewsItem; also: NewsItem[]; unread: boolean }
+export interface DigestStory { itemId: number; title: string; websites: number; lead: string | null }
+export interface Digest { stories: number; websites: number; top: DigestStory[]; names: string[] }
 export interface NewsView {
   topics: TopicSummary[]; topic: TopicSummary | null; stories: Story[]; filter: NewsFilter; blockedSites: string[]; now: string
+  digest: Digest | null
 }
+export interface Article {
+  url: string; title: string; byline: string | null; siteName: string | null; image: string | null; html: string; lead: string; words: number
+}
+export interface Reading { item: NewsItem; article: Article | null; error: string | null; also: NewsItem[] }
 export interface CheckOutcome { topicId: number; topicName: string; added: number; error: string | null }
 
 export const newsApi = {
@@ -110,5 +117,7 @@ export const newsApi = {
   setSaved: (itemId: number, saved: boolean) => invoke<void>('set_saved', { itemId, saved }),
   blockSite: (site: string) => invoke<string>('block_site', { site }),
   unblockSite: (domain: string) => invoke<void>('unblock_site', { domain }),
-  openStory: (itemId: number) => invoke<void>('open_story', { itemId })
+  openStory: (itemId: number) => invoke<void>('open_story', { itemId }),
+  readStory: (itemId: number, refresh = false) => invoke<Reading>('read_story', { itemId, refresh }),
+  openLink: (url: string) => invoke<void>('open_link', { url })
 }

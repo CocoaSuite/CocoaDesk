@@ -16,7 +16,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use cocoadesk_core::import::WorkbookPreview;
 use cocoadesk_core::model::{ClassInput, MarkStatus, Period};
-use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView};
+use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView, Reading};
 use cocoadesk_core::news::{feed, HttpFetcher, TopicInput};
 use cocoadesk_core::service::{self, ImportDone, ImportRequest, Settings, WeekView};
 use cocoadesk_core::store::{SemesterInput, Store};
@@ -45,6 +45,12 @@ impl AppState {
         let files = self.files.lock().map_err(|_| "Internal error.".to_string())?;
         files.get(token).map(f).ok_or_else(|| "That file is no longer open. Choose it again.".to_string())
     }
+}
+
+/// The start of today on this computer's clock, as UTC.
+fn day_start() -> chrono::DateTime<Utc> {
+    let midnight = Local::now().date_naive().and_hms_opt(0, 0, 0).expect("valid time");
+    midnight.and_local_timezone(Local).earliest().map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| Utc::now() - chrono::Duration::hours(24))
 }
 
 fn now() -> NaiveDateTime {
@@ -174,7 +180,7 @@ fn import_commit(state: State<AppState>, token: String, request: ImportRequest) 
 
 #[tauri::command]
 fn news_view(state: State<AppState>, topic_id: Option<i64>, filter: Option<Filter>) -> Result<NewsView, String> {
-    news::news_view(&*state.store()?, topic_id, filter.unwrap_or(Filter::All), now()).map_err(err)
+    news::news_view(&*state.store()?, topic_id, filter.unwrap_or(Filter::All), now(), day_start()).map_err(err)
 }
 
 #[tauri::command]
@@ -248,19 +254,46 @@ fn unblock_site(state: State<AppState>, domain: String) -> Result<(), String> {
     state.store()?.unblock_site(&domain).map_err(err)
 }
 
-/// Opens a story in the default browser and marks it read.
+/// Opens a story in the default browser and marks it read. Uses the article's own address
+/// when CocoaDesk has already found it.
 #[tauri::command]
 fn open_story(app: AppHandle, state: State<AppState>, item_id: i64) -> Result<(), String> {
-    let item = {
+    let url = {
         let store = state.store()?;
         let item = store.news_item(item_id).map_err(err)?;
         store.set_story_read(item_id, true).map_err(err)?;
-        item
+        match store.cached_article(item_id).map_err(err)? {
+            Some((Some(a), _)) => a.url,
+            _ => item.url,
+        }
     };
-    if !(item.url.starts_with("https://") || item.url.starts_with("http://")) {
-        return Err("That story has no web address.".into());
+    open_web(&app, &url)
+}
+
+fn open_web(app: &AppHandle, url: &str) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("That isn't a web address.".into());
     }
-    app.opener().open_url(&item.url, None::<&str>).map_err(|e| e.to_string())
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Opens a link from inside an article in the browser.
+#[tauri::command]
+fn open_link(app: AppHandle, url: String) -> Result<(), String> {
+    open_web(&app, &url)
+}
+
+/// The article text for the reader, fetched the first time and kept afterwards.
+#[tauri::command]
+async fn read_story(app: AppHandle, item_id: i64, refresh: Option<bool>) -> Result<Reading, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let r = news::read_story(&state.store, item_id, &state.fetcher, Utc::now(), refresh.unwrap_or(false)).map_err(err);
+        let _ = app.emit("news:read", item_id);
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Checks one topic, sends its notifications and tells the UI. Returns `None` if a check of
@@ -288,6 +321,19 @@ fn run_check(app: &AppHandle, id: i64) -> Option<Result<CheckOutcome, String>> {
         }
     }
     let _ = app.emit("news:changed", id);
+    // Read today's most covered stories in the background, so the day's summary can quote
+    // their opening lines.
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let state = handle.state::<AppState>();
+        let targets = state.store().ok().and_then(|s| news::digest_prefetch(&s, id, day_start()).ok()).unwrap_or_default();
+        if !targets.is_empty() {
+            for item in targets {
+                let _ = news::prefetch_article(&state.store, item, &state.fetcher, Utc::now());
+            }
+            let _ = handle.emit("news:changed", id);
+        }
+    });
     Some(result)
 }
 
@@ -468,7 +514,9 @@ pub fn run() {
             set_saved,
             block_site,
             unblock_site,
-            open_story
+            open_story,
+            open_link,
+            read_story
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");

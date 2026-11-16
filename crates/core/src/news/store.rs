@@ -6,6 +6,7 @@ use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use rusqlite::{params, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 
+use super::article::{fetch_article, Article};
 use super::feed::{parse_feed, search_url, Fetch};
 use super::*;
 use crate::store::Store;
@@ -66,6 +67,42 @@ pub struct NewsView {
     pub filter: Filter,
     pub blocked_sites: Vec<String>,
     pub now: NaiveDateTime,
+    pub digest: Option<Digest>,
+}
+
+/// The day so far for one topic, put together from counts — no text is generated.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Digest {
+    /// New stories today (a story covered by several websites counts once).
+    pub stories: usize,
+    /// Different websites they came from.
+    pub websites: usize,
+    /// The most covered stories, most websites first.
+    pub top: Vec<DigestStory>,
+    /// Names that come up in several of today's headlines, most frequent first.
+    pub names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DigestStory {
+    pub item_id: i64,
+    pub title: String,
+    pub websites: usize,
+    /// The article's opening sentences, when CocoaDesk has read it.
+    pub lead: Option<String>,
+}
+
+/// An article as stored for reading inside CocoaDesk.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reading {
+    pub item: NewsItem,
+    pub article: Option<Article>,
+    pub error: Option<String>,
+    /// The same story from other websites.
+    pub also: Vec<NewsItem>,
 }
 
 /// The result of checking one topic.
@@ -247,6 +284,35 @@ impl Store {
         Ok(())
     }
 
+    pub fn cached_article(&self, item_id: i64) -> Result<Option<(Option<Article>, Option<String>)>> {
+        let row: Option<(Option<String>, Option<String>)> = self
+            .conn
+            .query_row("SELECT article, error FROM news_articles WHERE item_id = ?1", [item_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .optional()?;
+        Ok(row.map(|(a, e)| (a.and_then(|a| serde_json::from_str::<Article>(&a).ok()), e)))
+    }
+
+    pub fn save_article(&self, item_id: i64, result: &Result<Article>, now: DateTime<Utc>) -> Result<()> {
+        let (article, error) = match result {
+            Ok(a) => (Some(serde_json::to_string(a).unwrap()), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        self.conn.execute(
+            "INSERT INTO news_articles(item_id, article, error, fetched_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(item_id) DO UPDATE SET article = excluded.article, error = excluded.error, fetched_at = excluded.fetched_at",
+            params![item_id, article, error, utc_str(now)],
+        )?;
+        Ok(())
+    }
+
+    /// The other articles of an item's story.
+    pub fn story_siblings(&self, item: &NewsItem) -> Result<Vec<NewsItem>> {
+        let sql = format!("SELECT {ITEM_COLS} FROM news_items WHERE topic_id = ?1 AND story = ?2 AND id != ?3 ORDER BY COALESCE(published_at, fetched_at) DESC");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let v = stmt.query_map(params![item.topic_id, item.story, item.id], item_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(v)
+    }
+
     /// Deletes unsaved stories fetched more than [`RETENTION_DAYS`] ago.
     pub fn prune_news(&self, now: DateTime<Utc>) -> Result<usize> {
         let cutoff = utc_str(now - Duration::days(RETENTION_DAYS));
@@ -395,12 +461,195 @@ pub fn check_topic(
     Ok(CheckOutcome { topic_id, topic_name: topic.name, added: added.len(), error, notify, notify_more })
 }
 
+/// Opens a story for reading: the stored text, or the article fetched now. The store isn't
+/// locked while downloading.
+pub fn read_story(
+    store: &std::sync::Mutex<Store>,
+    item_id: i64,
+    fetcher: &dyn Fetch,
+    now: DateTime<Utc>,
+    refresh: bool,
+) -> Result<Reading> {
+    let lock = || store.lock().map_err(|_| Error::invalid("The data store is unavailable."));
+    let (item, cached) = {
+        let s = lock()?;
+        (s.news_item(item_id)?, s.cached_article(item_id)?)
+    };
+    let (article, error) = match cached {
+        Some((a, e)) if !refresh && (a.is_some() || e.is_some()) => (a, e),
+        _ => {
+            let result = fetch_article(fetcher, &item.url);
+            lock()?.save_article(item_id, &result, now)?;
+            match result {
+                Ok(a) => (Some(a), None),
+                Err(e) => (None, Some(e.to_string())),
+            }
+        }
+    };
+    let s = lock()?;
+    s.set_story_read(item_id, true)?;
+    let item = s.news_item(item_id)?;
+    let also = s.story_siblings(&item)?;
+    Ok(Reading { item, article, error, also })
+}
+
+/// Fetches and stores an article's text without marking it read (for the day's summary).
+pub fn prefetch_article(store: &std::sync::Mutex<Store>, item_id: i64, fetcher: &dyn Fetch, now: DateTime<Utc>) -> Result<()> {
+    let lock = || store.lock().map_err(|_| Error::invalid("The data store is unavailable."));
+    let url = lock()?.news_item(item_id)?.url;
+    let result = fetch_article(fetcher, &url);
+    lock()?.save_article(item_id, &result, now)
+}
+
+const NAME_STOPWORDS: &[&str] = &[
+    "как",
+    "что",
+    "это",
+    "его",
+    "для",
+    "при",
+    "после",
+    "почему",
+    "когда",
+    "где",
+    "кто",
+    "или",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "how",
+    "why",
+    "what",
+];
+
+/// Today's stories grouped, counted and ranked by how many websites covered them.
+fn compute_digest(store: &Store, cfg: &TopicConfig, items: &[NewsItem], day_start: DateTime<Utc>) -> Result<Option<Digest>> {
+    let today: Vec<&NewsItem> = items.iter().filter(|i| i.published_at.unwrap_or(i.fetched_at) >= day_start).collect();
+    if today.is_empty() {
+        return Ok(None);
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: HashMap<String, Vec<&NewsItem>> = HashMap::new();
+    for it in &today {
+        if !groups.contains_key(&it.story) {
+            order.push(it.story.clone());
+        }
+        groups.entry(it.story.clone()).or_default().push(it);
+    }
+    let websites: HashSet<&str> = today.iter().map(|i| i.domain.as_str()).collect();
+    let mut ranked: Vec<(usize, usize, &Vec<&NewsItem>)> = order
+        .iter()
+        .enumerate()
+        .map(|(pos, k)| {
+            let g = &groups[k];
+            (g.iter().map(|i| i.domain.as_str()).collect::<HashSet<_>>().len(), pos, g)
+        })
+        .collect();
+    // Most websites first; among equals, the newest (lists are newest first).
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    let mut top = Vec::new();
+    for (sites, _, g) in ranked.iter().take(3) {
+        let lead_item = g[0];
+        let mut lead = None;
+        for it in g.iter() {
+            if let Some((Some(a), _)) = store.cached_article(it.id)? {
+                if !a.lead.is_empty() {
+                    lead = Some(a.lead);
+                    break;
+                }
+            }
+        }
+        if lead.is_none() && lead_item.summary.chars().count() >= 60 {
+            let l = super::article::lead_of(&lead_item.summary);
+            if !l.is_empty() {
+                lead = Some(l);
+            }
+        }
+        top.push(DigestStory { item_id: lead_item.id, title: lead_item.title.clone(), websites: *sites, lead });
+    }
+    let names = frequent_names(cfg, order.iter().map(|k| groups[k][0].title.as_str()));
+    Ok(Some(Digest { stories: order.len(), websites: websites.len(), top, names }))
+}
+
+/// Proper names that recur across headlines: capitalised words that don't start the
+/// headline, plus acronyms. Headlines written in Title Case are skipped, since every word
+/// there is capitalised. The topic's own words are left out.
+pub fn frequent_names<'a>(cfg: &TopicConfig, titles: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut counts: HashMap<String, (usize, HashMap<String, usize>)> = HashMap::new();
+    let topic_words: Vec<String> = cfg
+        .include
+        .iter()
+        .flat_map(|w| words(&normalize(w.trim_matches('"').trim_end_matches('*'))).into_iter().map(stem).collect::<Vec<_>>())
+        .collect();
+    for title in titles {
+        let raw: Vec<&str> = title.split_whitespace().collect();
+        let tokens: Vec<String> =
+            raw.iter().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-').to_string()).filter(|w| !w.is_empty()).collect();
+        let caps = tokens.iter().filter(|w| w.chars().next().is_some_and(char::is_uppercase)).count();
+        let title_case = tokens.len() >= 4 && caps * 10 > tokens.len() * 6;
+        let mut seen = HashSet::new();
+        for (i, w) in tokens.iter().enumerate() {
+            let n = w.chars().count();
+            let acronym =
+                (2..=6).contains(&n) && w.chars().all(|c| c.is_uppercase() || c.is_ascii_digit()) && w.chars().any(char::is_alphabetic);
+            let capital = n >= 3 && w.chars().next().is_some_and(char::is_uppercase) && w.chars().skip(1).any(char::is_lowercase);
+            if !(acronym || (capital && i > 0 && !title_case)) {
+                continue;
+            }
+            let lower = normalize(w);
+            if NAME_STOPWORDS.contains(&lower.as_str()) {
+                continue;
+            }
+            let key = stem(&lower);
+            if topic_words.iter().any(|t| super::stems_match_pub(t, &key)) || !seen.insert(key.clone()) {
+                continue;
+            }
+            let e = counts.entry(key).or_default();
+            e.0 += 1;
+            *e.1.entry(w.clone()).or_default() += 1;
+        }
+    }
+    let mut v: Vec<(usize, String)> = counts
+        .into_values()
+        .filter(|(n, _)| *n >= 2)
+        .map(|(n, forms)| {
+            (
+                n,
+                forms
+                    .into_iter()
+                    .max_by(|a, b| a.1.cmp(&b.1).then(b.0.chars().count().cmp(&a.0.chars().count())))
+                    .map(|f| f.0)
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
+    v.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    v.into_iter().take(6).map(|(_, s)| s).collect()
+}
+
+/// Items whose article text would complete today's digest (the most covered stories that
+/// haven't been read yet). The app fetches them in the background after each check.
+pub fn digest_prefetch(store: &Store, topic_id: i64, day_start: DateTime<Utc>) -> Result<Vec<i64>> {
+    let topic = store.news_topic(topic_id)?;
+    let items = store.news_items(topic_id)?;
+    let Some(d) = compute_digest(store, &topic.config, &items, day_start)? else { return Ok(vec![]) };
+    let mut out = Vec::new();
+    for s in d.top {
+        if store.cached_article(s.item_id)?.is_none() {
+            out.push(s.item_id);
+        }
+    }
+    Ok(out)
+}
+
 /// Topics whose interval has passed.
 pub fn due_topics(store: &Store, now: NaiveDateTime) -> Result<Vec<i64>> {
     Ok(store.news_topics()?.into_iter().filter(|t| t.is_due(now)).map(|t| t.id).collect())
 }
 
-pub fn news_view(store: &Store, topic_id: Option<i64>, filter: Filter, now: NaiveDateTime) -> Result<NewsView> {
+pub fn news_view(store: &Store, topic_id: Option<i64>, filter: Filter, now: NaiveDateTime, day_start: DateTime<Utc>) -> Result<NewsView> {
     let unread = store.unread_counts()?;
     let topics: Vec<TopicSummary> = store
         .news_topics()?
@@ -419,9 +668,12 @@ pub fn news_view(store: &Store, topic_id: Option<i64>, filter: Filter, now: Naiv
         .or(topics.first())
         .cloned();
     let mut stories: Vec<Story> = Vec::new();
+    let mut digest = None;
     if let Some(t) = &topic {
+        let items = store.news_items(t.topic.id)?;
+        digest = compute_digest(store, &t.topic.config, &items, day_start)?;
         let mut index: HashMap<String, usize> = HashMap::new();
-        for it in store.news_items(t.topic.id)? {
+        for it in items {
             match index.get(&it.story) {
                 Some(&i) => {
                     stories[i].unread |= !it.read;
@@ -439,7 +691,7 @@ pub fn news_view(store: &Store, topic_id: Option<i64>, filter: Filter, now: Naiv
             Filter::Saved => s.lead.saved || s.also.iter().any(|i| i.saved),
         });
     }
-    Ok(NewsView { topics, topic, stories, filter, blocked_sites: store.blocked_sites()?, now })
+    Ok(NewsView { topics, topic, stories, filter, blocked_sites: store.blocked_sites()?, now, digest })
 }
 
 #[cfg(test)]
@@ -486,6 +738,9 @@ mod tests {
     fn now_utc() -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-11-16T06:00:00Z").unwrap().with_timezone(&Utc)
     }
+    fn day() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-11-15T21:00:00Z").unwrap().with_timezone(&Utc)
+    }
     fn local(h: u32, m: u32) -> NaiveDateTime {
         chrono::NaiveDate::from_ymd_opt(2026, 11, 16).unwrap().and_hms_opt(h, m, 0).unwrap()
     }
@@ -511,7 +766,7 @@ mod tests {
         assert_eq!(out.added, 0);
 
         let s = store.lock().unwrap();
-        let v = news_view(&s, Some(id), Filter::All, local(9, 31)).unwrap();
+        let v = news_view(&s, Some(id), Filter::All, local(9, 31), day()).unwrap();
         // The two car-sales headlines are one story.
         assert_eq!(v.stories.len(), 2);
         let cars = v.stories.iter().find(|st| st.lead.domain == "rbc.ru" || st.lead.domain == "lenta.ru").unwrap();
@@ -519,7 +774,7 @@ mod tests {
         assert_eq!(v.topics[0].unread, 2);
         assert_eq!(v.topic.as_ref().unwrap().next_check, Some(local(10, 0)));
         s.set_story_read(cars.lead.id, true).unwrap();
-        assert_eq!(news_view(&s, Some(id), Filter::Unread, local(9, 31)).unwrap().stories.len(), 1);
+        assert_eq!(news_view(&s, Some(id), Filter::Unread, local(9, 31), day()).unwrap().stories.len(), 1);
     }
 
     #[test]
@@ -579,5 +834,36 @@ mod tests {
         assert!(t.last_error.is_some());
         assert!(!t.is_due(local(9, 10)));
         assert!(t.is_due(local(9, 30)));
+    }
+
+    #[test]
+    fn digest_ranks_by_coverage_and_finds_names() {
+        let s = Store::open_in_memory().unwrap();
+        let id = s.create_topic(&input(true, vec!["https://blog.example.com/feed"], NotifyMode::Off), local(8, 0)).unwrap();
+        let store = Mutex::new(s);
+        check_topic(&store, id, &fetcher(), now_utc(), local(9, 0)).unwrap();
+        let s = store.lock().unwrap();
+        let d = news_view(&s, Some(id), Filter::All, local(9, 1), day()).unwrap().digest.unwrap();
+        // Today: the car-sales story (2 websites). The blog post was published yesterday.
+        assert_eq!(d.stories, 1);
+        assert_eq!(d.websites, 2);
+        assert_eq!(d.top[0].websites, 2);
+        assert!(d.top[0].lead.is_none());
+        assert_eq!(digest_prefetch(&s, id, day()).unwrap(), vec![d.top[0].item_id]);
+    }
+
+    #[test]
+    fn names_are_recurring_proper_nouns() {
+        let mut cfg = input(false, vec!["https://x.ru/rss"], NotifyMode::Off).config;
+        cfg.include = vec!["электромобиль".into()];
+        let titles = [
+            "Продажи электромобилей Tesla в России выросли",
+            "В Москве открылся салон Tesla",
+            "Электромобили подешевели в Москве и Петербурге",
+            "ЦБ сохранил ставку",
+            "Аналитики ЦБ ждут роста рынка",
+            "How Tesla And BYD Are Changing The Market",
+        ];
+        assert_eq!(frequent_names(&cfg, titles.into_iter()), vec!["Tesla".to_string(), "Москве".to_string(), "ЦБ".to_string()]);
     }
 }

@@ -22,7 +22,9 @@ CocoaDesk is the personal desk of the Cocoa suite: one place to organise, keep a
 - Only stories that **mention your words** are kept. Word endings don't matter («электромобиль» also finds «электромобилей»); `word*` matches the start of a word and `"quotes"` match exactly. Stories mentioning words you want to leave out are dropped.
 - **Block websites** for one topic or for every topic, including from any story's menu. Subdomains are blocked too, and stories already found from a blocked site are removed (saved ones stay).
 - The same story from several websites is shown once, with the others underneath.
-- Unread, saved and read stories; stories open in your browser. Unsaved stories are cleared after 30 days.
+- **Read inside CocoaDesk**: click a story to read its text in a side panel, without ads and menus (the same method as browsers' reader view). Links inside open in your browser, and *Open in browser* is always there for videos, comments or pages that can't be read this way. Google News links are followed to the original article.
+- **Today so far**: a short paragraph at the top of each topic, put together from counts — how many stories and websites today, the stories covered by the most websites (with the article's opening sentence once it has been read), and names that recur in today's headlines. Nothing is written or summarised by a model.
+- Unread and saved stories. Unsaved stories are cleared after 30 days.
 - Optional notifications for every new story, or only when a headline mentions certain words.
 
 Matching is plain word comparison with a standard stemmer — no recommendations or ranking; stories are listed newest first.

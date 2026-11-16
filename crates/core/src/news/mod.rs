@@ -4,6 +4,7 @@
 //! words, doesn't mention a word to leave out, and doesn't come from a blocked website.
 //! Stories are listed newest first.
 
+pub mod article;
 pub mod feed;
 pub mod store;
 
@@ -262,6 +263,10 @@ pub fn term_matches(text: &str, term: &str) -> bool {
             }
         })
     })
+}
+
+pub(crate) fn stems_match_pub(a: &str, b: &str) -> bool {
+    stems_match(a, b)
 }
 
 /// Snowball sometimes stems forms of one word a letter or two apart («автомобили» → «автомоб»,

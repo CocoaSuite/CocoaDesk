@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event'
-import { newsApi, errText, type NewsView, type NewsFilter, type Story, type NewsItem, type TopicSummary } from '../api'
+import { newsApi, errText, type NewsView, type NewsFilter, type Story, type NewsItem, type TopicSummary, type Reading, type Digest } from '../api'
 import { h, fmtMinutes } from '../util'
 import { icon } from './icons'
 import { toast, menuAt } from './dialogs'
@@ -39,8 +39,13 @@ export class NewsScreen {
   private checking = new Set<number>()
   private expanded = new Set<string>()
   private loading: Promise<void> | null = null
+  /** The story open in the reader, and its pane (kept across redraws so scrolling stays put). */
+  private reading: { itemId: number; el: HTMLElement } | null = null
 
   constructor() {
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && this.reading && this.el.isConnected && !document.querySelector('.modal,.ctx')) this.closeReader()
+    })
     void listen<number>('news:checking', e => { this.checking.add(e.payload); if (this.view) this.render() })
     void listen<number>('news:changed', e => { this.checking.delete(e.payload); void this.load() })
   }
@@ -75,7 +80,9 @@ export class NewsScreen {
         h('div', { class: 'row' }, h('button', { class: 'pri', onclick: () => this.editTopic(null) }, icon('plus'), 'New topic'))))
       return
     }
-    this.el.replaceChildren(head, h('div', { class: 'ncols' }, this.topicList(v), this.topicPane(v)))
+    const cols = h('div', { class: 'ncols' + (this.reading ? ' reading' : '') }, this.topicList(v), this.topicPane(v))
+    if (this.reading) cols.append(this.reading.el)
+    this.el.replaceChildren(head, cols)
     if (focusKey) (this.el.querySelector(`[data-key="${CSS.escape(focusKey)}"]`) as HTMLElement | null)?.focus()
   }
 
@@ -84,7 +91,7 @@ export class NewsScreen {
       const sub = !t.enabled ? 'Paused' : this.checking.has(t.id) ? 'Checking…' : t.lastError ? 'Problem with a source' : everyText(t.intervalMinutes)
       return h('button', {
         class: t.id === v.topic?.id ? 'on' : '', 'data-key': `t${t.id}`, 'aria-current': t.id === v.topic?.id ? 'true' : null,
-        onclick: () => { this.topicId = t.id; this.expanded.clear(); void this.load() }
+        onclick: () => { this.topicId = t.id; this.expanded.clear(); this.reading = null; void this.load() }
       }, h('span', { class: 'tn' }, h('b', {}, t.name), h('span', { class: t.lastError && t.enabled ? 'bad' : '' }, sub)),
       t.unread ? h('span', { class: 'badge', 'aria-label': `${t.unread} unread` }, String(t.unread)) : null)
     }))
@@ -129,6 +136,7 @@ export class NewsScreen {
             : this.checking.has(t.id) || !t.lastChecked ? 'Looking for stories…' : 'No stories match yet. They’ll appear here as they’re published.'
       pane.append(h('div', { class: 'card cardpad hint' }, msg))
     } else {
+      if (v.digest && this.filter === 'all' && !this.reading) pane.append(this.digestCard(v.digest))
       pane.append(h('div', { class: 'card stories' }, ...v.stories.map(s => this.storyRow(s))))
     }
     return pane
@@ -137,9 +145,7 @@ export class NewsScreen {
   private storyRow(s: Story): HTMLElement {
     const it = s.lead
     const when = it.publishedAt ?? it.fetchedAt
-    const open = (item: NewsItem) => async () => {
-      try { await newsApi.openStory(item.id); await this.load() } catch (e) { toast(errText(e)) }
-    }
+    const open = (item: NewsItem) => () => this.openReader(item.id)
     const saved = s.lead.saved || s.also.some(a => a.saved)
     const sources = [it, ...s.also]
     const tags = h('div', { class: 'tags' }, ...it.matched.slice(0, 4).map(m => h('span', { class: 'chip sel' }, m.replace(/^"|"$/g, ''))))
@@ -162,12 +168,14 @@ export class NewsScreen {
       const domains = [...new Set(sources.map(x => x.domain).filter(Boolean))]
       menuAt(more, [
         { label: s.unread ? 'Mark as read' : 'Mark as unread', run: async () => { await newsApi.setStoryRead(it.id, s.unread); await this.load() } },
+        { label: 'Open in browser', run: async () => { try { await newsApi.openStory(it.id); await this.load() } catch (e) { toast(errText(e)) } } },
         { label: 'Copy link', run: async () => { try { await navigator.clipboard.writeText(it.url); toast('Link copied') } catch { toast('Couldn’t copy the link') } } },
         'sep',
         ...domains.map(d => ({ label: `Block ${d} for all topics`, danger: true, run: () => this.block(d) }))
       ])
     } }, icon('more'))
-    return h('article', { class: 'st' + (s.unread ? ' unread' : '') },
+    const current = this.reading && sources.some(x => x.id === this.reading!.itemId)
+    const row = h('article', { class: 'st' + (s.unread ? ' unread' : '') + (current ? ' cur' : '') },
       h('span', { class: 'src', 'aria-hidden': 'true' }, initials(it)),
       body,
       h('div', { class: 'side-b' },
@@ -175,6 +183,120 @@ export class NewsScreen {
         h('button', { class: 'ic' + (saved ? ' saved' : ''), 'aria-label': saved ? 'Remove from saved' : 'Save for later', 'aria-pressed': saved ? 'true' : 'false',
           onclick: async () => { await newsApi.setSaved(it.id, !saved); for (const a of s.also) if (a.saved && saved) await newsApi.setSaved(a.id, false); await this.load() } }, icon('bookmark')),
         more))
+    if (this.reading) row.addEventListener('click', e => { if (!(e.target as HTMLElement).closest('button')) this.openReader(it.id) })
+    return row
+  }
+
+  // ---------- today ----------
+
+  /** A paragraph about today assembled from counts and headlines; nothing is generated. */
+  private digestCard(d: Digest): HTMLElement {
+    // Headlines ending in their own full stop don't get a second one.
+    const link = (id: number, title: string) => h('button', { class: 'ln', onclick: () => this.openReader(id) }, `«${title.replace(/[.。]\s*$/, '')}»`)
+    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+    const p = h('p', {}, `So far today: ${plural(d.stories, 'new story', 'new stories')} from ${plural(d.websites, 'website', 'websites')}.`)
+    const [first, ...rest] = d.top
+    const parts: Node[] = [p]
+    if (first) {
+      p.append(' ', first.websites > 1 ? 'Most covered: ' : 'Latest: ', link(first.itemId, first.title), first.websites > 1 ? ` — on ${first.websites} websites.` : '.')
+      if (first.lead) parts.push(h('div', { class: 'lead' }, first.lead))
+    }
+    if (rest.length) {
+      const q = h('p', {}, 'Also: ')
+      rest.forEach((s, i) => {
+        if (i) q.append(i === rest.length - 1 ? ' and ' : ', ')
+        q.append(link(s.itemId, s.title))
+        if (s.websites > 1) q.append(` (${s.websites} websites)`)
+      })
+      q.append('.')
+      parts.push(q)
+      for (const s of rest) if (s.lead && s.websites > 1) parts.push(h('div', { class: 'lead' }, s.lead))
+    }
+    if (d.names.length) {
+      const names = d.names.length > 1 ? `${d.names.slice(0, -1).join(', ')} and ${d.names[d.names.length - 1]}` : d.names[0]
+      parts.push(h('p', { class: 'mute' }, `Often in the headlines: ${names}.`))
+    }
+    return h('section', { class: 'card digest', 'aria-label': 'Today so far' },
+      h('div', { class: 'ch' }, h('span', { class: 'lab' }, 'Today so far'), h('span', { class: 'hint' }, 'Counted from today’s headlines')),
+      ...parts)
+  }
+
+  // ---------- reader ----------
+
+  private openReader(itemId: number) {
+    const el = h('section', { class: 'card reader', 'aria-label': 'Article', tabindex: '-1' })
+    this.reading = { itemId, el }
+    this.fillReader(el, null, null, itemId)
+    this.render()
+    void this.loadArticle(itemId, false)
+  }
+
+  private closeReader() {
+    this.reading = null
+    this.render()
+  }
+
+  private async loadArticle(itemId: number, refresh: boolean) {
+    try {
+      const r = await newsApi.readStory(itemId, refresh)
+      if (this.reading?.itemId !== itemId) return
+      this.fillReader(this.reading.el, r, null, itemId)
+    } catch (e) {
+      if (this.reading?.itemId !== itemId) return
+      this.fillReader(this.reading.el, null, errText(e), itemId)
+    }
+    void this.load()
+  }
+
+  private fillReader(el: HTMLElement, r: Reading | null, failure: string | null, itemId: number) {
+    const item = r?.item ?? this.findItem(itemId)
+    const a = r?.article ?? null
+    const openBrowser = async () => { try { await newsApi.openStory(itemId) } catch (e) { toast(errText(e)) } }
+    const saved = !!item?.saved
+    const bar = h('div', { class: 'rbar' },
+      h('button', { class: 'ic', 'aria-label': 'Close the article', onclick: () => this.closeReader() }, icon('x')),
+      h('span', { class: 'sp' }),
+      item ? h('button', { class: 'ic' + (saved ? ' saved' : ''), 'aria-label': saved ? 'Remove from saved' : 'Save for later', 'aria-pressed': saved ? 'true' : 'false',
+        onclick: async () => { await newsApi.setSaved(itemId, !saved); await this.load(); if (r) this.fillReader(el, { ...r, item: { ...r.item, saved: !saved } }, failure, itemId) } }, icon('bookmark')) : null,
+      h('button', { onclick: openBrowser }, 'Open in browser'))
+    const body = h('div', { class: 'rbody' })
+    const when = item ? ago(item.publishedAt ?? item.fetchedAt) : ''
+    const meta = [a?.siteName || item?.sourceName || item?.domain, a?.byline, when].filter(Boolean).join(' · ')
+    body.append(h('div', { class: 'rmeta' }, meta), h('h1', {}, item?.title || a?.title || ''))
+    if (!r && !failure) {
+      body.append(h('div', { class: 'rload', role: 'status' }, h('i'), `Getting the article from ${item?.domain || 'the website'}…`))
+    } else if (!a) {
+      body.append(h('div', { class: 'nerr', role: 'status' }, `Couldn’t show this article here. ${r?.error ?? failure ?? ''}`),
+        h('div', { class: 'row', style: 'display:flex;gap:8px' },
+          h('button', { onclick: () => { this.fillReader(el, null, null, itemId); void this.loadArticle(itemId, true) } }, icon('refresh'), 'Try again'),
+          h('button', { class: 'pri', onclick: openBrowser }, 'Open in browser')))
+    } else {
+      if (a.image && !/<img\b/i.test(a.html)) body.append(h('img', { class: 'hero', src: a.image, alt: '', loading: 'lazy', onerror: (e: Event) => (e.target as HTMLElement).remove() }))
+      const prose = h('div', { class: 'prose', lang: /[а-яё]/i.test(a.html.slice(0, 2000)) ? 'ru' : null })
+      prose.innerHTML = a.html
+      prose.addEventListener('click', e => {
+        const link = (e.target as HTMLElement).closest('a')
+        if (link?.href) { e.preventDefault(); void newsApi.openLink(link.href).catch(err => toast(errText(err))) }
+      })
+      for (const img of prose.querySelectorAll('img')) img.addEventListener('error', () => img.remove())
+      body.append(prose)
+    }
+    if (r) {
+      const foot = h('div', { class: 'rfoot' })
+      if (a) foot.append(h('div', { class: 'hint' }, `Text from ${item?.domain || 'the website'}, shown without its ads and menus. Videos, comments and interactive parts are only in the original.`))
+      if (r.also.length) {
+        foot.append(h('div', { class: 'lab' }, 'Also covered by'),
+          ...r.also.map(x => h('button', { class: 'alt', onclick: () => this.openReader(x.id) }, h('span', {}, `${x.sourceName || x.domain}: `), x.title)))
+      }
+      if (foot.childElementCount) body.append(foot)
+    }
+    el.replaceChildren(bar, body)
+    el.scrollTop = 0
+  }
+
+  private findItem(id: number): NewsItem | null {
+    for (const s of this.view?.stories ?? []) for (const x of [s.lead, ...s.also]) if (x.id === id) return x
+    return null
   }
 
   private async block(domain: string) {
