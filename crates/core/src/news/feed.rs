@@ -239,7 +239,22 @@ pub trait Fetch: Send + Sync {
     fn post_form(&self, _url: &str, _body: &str) -> Result<Vec<u8>> {
         Err(Error::invalid("Not supported."))
     }
+    /// Calls a web API (JSON or XML), saying honestly that it's CocoaDesk asking.
+    fn get_api(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        self.get(url)
+    }
+    /// Posts JSON to a web API.
+    fn post_json(&self, _url: &str, _body: &str) -> Result<Vec<u8>> {
+        Err(Error::invalid("Not supported."))
+    }
+    /// Downloads a document such as a PDF, allowing larger files than pages.
+    fn get_file(&self, url: &str) -> Result<Page> {
+        self.get_page(url)
+    }
 }
+
+/// How CocoaDesk names itself to web APIs, as Wikipedia and others ask.
+pub const API_USER_AGENT: &str = concat!("CocoaDesk/", env!("CARGO_PKG_VERSION"), " (https://github.com/CocoaSuite/cocoadesk)");
 
 pub struct HttpFetcher {
     agent: ureq::Agent,
@@ -339,6 +354,53 @@ impl Fetch for HttpFetcher {
             .send(body)
             .map_err(|e| net_error(&host, e))?;
         resp.body_mut().with_config().limit(MAX_BYTES).read_to_vec().map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))
+    }
+
+    fn get_api(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        let host = host_of(url);
+        let mut req = self
+            .agent
+            .get(url)
+            .header("User-Agent", API_USER_AGENT)
+            .header("Accept", "application/json, application/atom+xml;q=0.9, */*;q=0.5");
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let mut resp = req.call().map_err(|e| net_error(&host, e))?;
+        resp.body_mut().with_config().limit(MAX_BYTES).read_to_vec().map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))
+    }
+
+    fn post_json(&self, url: &str, body: &str) -> Result<Vec<u8>> {
+        let host = host_of(url);
+        let mut resp = self
+            .agent
+            .post(url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .send(body)
+            .map_err(|e| net_error(&host, e))?;
+        resp.body_mut().with_config().limit(MAX_BYTES).read_to_vec().map_err(|e| Error::invalid(format!("Couldn't read {host}: {e}")))
+    }
+
+    fn get_file(&self, url: &str) -> Result<Page> {
+        use ureq::ResponseExt;
+        let host = host_of(url);
+        let mut resp = self
+            .agent
+            .get(url)
+            .header("Accept", "application/pdf, text/html;q=0.8, */*;q=0.5")
+            .header("Accept-Language", "ru,en;q=0.8")
+            .call()
+            .map_err(|e| net_error(&host, e))?;
+        let final_url = resp.get_uri().to_string();
+        let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+        let bytes = resp
+            .body_mut()
+            .with_config()
+            .limit(MAX_IMAGE_BYTES)
+            .read_to_vec()
+            .map_err(|e| Error::invalid(format!("Couldn't download the file from {host}: {e}")))?;
+        Ok(Page { bytes, content_type, final_url })
     }
 }
 

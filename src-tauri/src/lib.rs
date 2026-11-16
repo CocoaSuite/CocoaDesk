@@ -21,6 +21,12 @@ use cocoadesk_core::import::WorkbookPreview;
 use cocoadesk_core::model::{ClassInput, MarkStatus, Period};
 use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView, Reading};
 use cocoadesk_core::news::{feed, HttpFetcher, TopicInput};
+use cocoadesk_core::research::sources::{Explore, Overview};
+use cocoadesk_core::research::store::{
+    self as research, Citations as PaperCitations, Filter as ResearchFilter, LibraryView, PaperView, Reading as PaperReading,
+    SearchResult, Settings as ResearchSettings, Shelf, TopicInput as ResearchTopicInput, TopicsView,
+};
+use cocoadesk_core::research::Query;
 use cocoadesk_core::service::{self, ImportDone, ImportRequest, Settings, WeekView};
 use cocoadesk_core::store::{SemesterInput, Store};
 use cocoadesk_core::tasks::{self, BoardInput, CardInput, RateInfo, TasksView};
@@ -45,6 +51,10 @@ struct AppState {
     overlay: Mutex<Option<WindowPlace>>,
     /// When the exchange rate was last asked for, so a failing download isn't retried on every view.
     rate_tried: Mutex<Option<std::time::Instant>>,
+    /// Research topics being checked right now.
+    research_checking: Mutex<HashSet<i64>>,
+    /// Downloaded paper PDFs, served to the reader at `paperpdf://localhost/<paper id>`.
+    pdf_dir: std::path::PathBuf,
 }
 
 #[derive(Clone, Copy)]
@@ -449,6 +459,309 @@ async fn read_story(app: AppHandle, item_id: i64, refresh: Option<bool>) -> Resu
     .map_err(|e| e.to_string())?
 }
 
+
+// ---------- research ----------
+
+#[tauri::command]
+fn research_settings(state: State<AppState>) -> Result<ResearchSettings, String> {
+    state.store()?.research_settings().map_err(err)
+}
+
+#[tauri::command]
+fn research_save_settings(state: State<AppState>, settings: ResearchSettings) -> Result<(), String> {
+    state.store()?.save_research_settings(&settings).map_err(err)
+}
+
+#[tauri::command]
+async fn research_search(app: AppHandle, query: Query) -> Result<SearchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        research::search(&state.store, &state.fetcher, &query, Utc::now()).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn research_overview(app: AppHandle, text: String) -> Result<Option<Overview>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        research::overview(&state.fetcher, &text).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn research_topics_view(state: State<AppState>, topic_id: Option<i64>, filter: Option<ResearchFilter>) -> Result<TopicsView, String> {
+    research::topics_view(&*state.store()?, topic_id, filter.unwrap_or(ResearchFilter::All), Utc::now()).map_err(err)
+}
+
+#[tauri::command]
+fn research_save_topic(app: AppHandle, state: State<AppState>, id: Option<i64>, input: ResearchTopicInput) -> Result<i64, String> {
+    let id = {
+        let store = state.store()?;
+        match id {
+            Some(id) => store.update_research_topic(id, &input).map(|_| id),
+            None => store.create_research_topic(&input, now()),
+        }
+        .map_err(err)?
+    };
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        run_research_check(&handle, id);
+    });
+    Ok(id)
+}
+
+#[tauri::command]
+fn research_delete_topic(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_research_topic(id).map_err(err)
+}
+
+#[tauri::command]
+async fn research_check_now(app: AppHandle, id: i64) -> Result<research::CheckOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || run_research_check(&app, id).ok_or_else(|| "This topic is already being checked.".to_string())?)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn research_mark_topic_read(state: State<AppState>, topic_id: i64) -> Result<(), String> {
+    state.store()?.mark_research_topic_read(topic_id).map_err(err)
+}
+
+#[tauri::command]
+fn research_library(state: State<AppState>, shelf: Shelf) -> Result<LibraryView, String> {
+    research::library_view(&*state.store()?, shelf).map_err(err)
+}
+
+#[tauri::command]
+fn research_set_saved(state: State<AppState>, paper_id: i64, saved: bool) -> Result<(), String> {
+    state.store()?.set_paper_saved(paper_id, saved, Utc::now()).map_err(err)
+}
+
+#[tauri::command]
+fn research_set_read(state: State<AppState>, paper_id: i64, read: bool) -> Result<(), String> {
+    state.store()?.set_paper_read(paper_id, read).map_err(err)
+}
+
+#[tauri::command]
+fn research_set_note(state: State<AppState>, paper_id: i64, note: String) -> Result<(), String> {
+    state.store()?.set_paper_note(paper_id, &note, Utc::now()).map_err(err)
+}
+
+#[tauri::command]
+fn research_set_subject(state: State<AppState>, paper_id: i64, subject: String) -> Result<(), String> {
+    state.store()?.set_paper_subject(paper_id, &subject, Utc::now()).map_err(err)
+}
+
+#[tauri::command]
+fn research_set_collections(state: State<AppState>, paper_id: i64, collections: Vec<i64>) -> Result<(), String> {
+    state.store()?.set_paper_collections(paper_id, &collections, Utc::now()).map_err(err)
+}
+
+#[tauri::command]
+fn research_save_collection(state: State<AppState>, id: Option<i64>, name: String) -> Result<i64, String> {
+    state.store()?.save_collection(id, &name).map_err(err)
+}
+
+#[tauri::command]
+fn research_delete_collection(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_collection(id).map_err(err)
+}
+
+#[tauri::command]
+fn research_blocked(state: State<AppState>) -> Result<Vec<String>, String> {
+    state.store()?.research_blocked().map_err(err)
+}
+
+#[tauri::command]
+fn research_block(state: State<AppState>, value: String) -> Result<String, String> {
+    state.store()?.block_research(&value).map_err(err)
+}
+
+#[tauri::command]
+fn research_unblock(state: State<AppState>, value: String) -> Result<(), String> {
+    state.store()?.unblock_research(&value).map_err(err)
+}
+
+#[tauri::command]
+async fn research_read(app: AppHandle, paper_id: i64, refresh: Option<bool>) -> Result<PaperReading, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        research::read_paper(&state.store, paper_id, &state.fetcher, Utc::now(), now().date(), refresh.unwrap_or(false)).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn research_cite(state: State<AppState>, paper_id: i64) -> Result<PaperCitations, String> {
+    let p = state.store()?.research_paper(paper_id).map_err(err)?;
+    Ok(research::citations(&p, now().date()))
+}
+
+#[tauri::command]
+async fn research_explore(app: AppHandle, paper_id: i64, kind: Explore) -> Result<Vec<PaperView>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        research::explore(&state.store, &state.fetcher, paper_id, kind, Utc::now()).map_err(err)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+struct BoardChoice {
+    id: i64,
+    name: String,
+}
+
+#[tauri::command]
+fn research_task_boards(state: State<AppState>) -> Result<Vec<BoardChoice>, String> {
+    Ok(state.store()?.task_boards().map_err(err)?.into_iter().map(|b| BoardChoice { id: b.id, name: b.name }).collect())
+}
+
+#[tauri::command]
+fn research_add_to_tasks(app: AppHandle, state: State<AppState>, paper_id: i64, board_id: i64) -> Result<i64, String> {
+    let card = research::add_to_tasks(&*state.store()?, paper_id, board_id, Utc::now(), now()).map_err(err)?;
+    let _ = app.emit("tasks:changed", ());
+    Ok(card)
+}
+
+fn pdf_path(state: &AppState, paper_id: i64) -> std::path::PathBuf {
+    state.pdf_dir.join(format!("{paper_id}.pdf"))
+}
+
+/// Downloads a paper's free PDF (once) so the reader can show it.
+#[tauri::command]
+async fn research_pdf(app: AppHandle, paper_id: i64) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let path = pdf_path(&state, paper_id);
+        if path.exists() {
+            return Ok(());
+        }
+        let url = state.store()?.research_paper(paper_id).map_err(err)?.pdf_url.ok_or_else(|| "There's no free PDF of this paper.".to_string())?;
+        let bytes = research::fetch_pdf(&state.fetcher, &url).map_err(err)?;
+        std::fs::create_dir_all(&state.pdf_dir).map_err(|e| format!("Can't create the PDF folder: {e}"))?;
+        std::fs::write(&path, bytes).map_err(|e| format!("Can't save the PDF: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Saves a copy of the downloaded PDF where the person chooses.
+#[tauri::command]
+async fn research_save_pdf(app: AppHandle, paper_id: i64) -> Result<bool, String> {
+    research_pdf(app.clone(), paper_id).await?;
+    let state = app.state::<AppState>();
+    let paper = state.store()?.research_paper(paper_id).map_err(err)?;
+    let first = paper.authors.first().map(|a| a.family.clone()).unwrap_or_default();
+    let mut name: String = format!("{first} {} {}", paper.year.map(|y| y.to_string()).unwrap_or_default(), paper.title)
+        .chars()
+        .map(|c| if "\\/:*?\"<>|".contains(c) { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    name = name.chars().take(120).collect();
+    let target = app.dialog().file().set_title("Save the PDF").set_file_name(format!("{name}.pdf")).add_filter("PDF", &["pdf"]).blocking_save_file();
+    let Some(target) = target else { return Ok(false) };
+    let target = target.into_path().map_err(|e| e.to_string())?;
+    std::fs::copy(pdf_path(&state, paper_id), target).map_err(|e| format!("Can't save the PDF: {e}"))?;
+    Ok(true)
+}
+
+/// Opens a paper's page or PDF in the browser.
+#[tauri::command]
+fn research_open(app: AppHandle, state: State<AppState>, paper_id: i64, what: String) -> Result<(), String> {
+    let p = state.store()?.research_paper(paper_id).map_err(err)?;
+    let url = match what.as_str() {
+        "pdf" => p.pdf_url.ok_or_else(|| "There's no free PDF of this paper.".to_string())?,
+        "doi" => p.doi.map(|d| format!("https://doi.org/{d}")).unwrap_or(p.url),
+        _ => p.url,
+    };
+    open_web(&app, &url)
+}
+
+/// Serves downloaded PDFs to the reader at `paperpdf://localhost/<paper id>`.
+fn serve_pdf(app: &AppHandle, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let id: Option<i64> = path.trim_start_matches('/').trim_end_matches(".pdf").parse().ok();
+    let bytes = match (app.try_state::<AppState>(), id) {
+        (Some(state), Some(id)) => std::fs::read(pdf_path(&state, id)).ok(),
+        _ => None,
+    };
+    match bytes {
+        Some(b) => tauri::http::Response::builder().header("Content-Type", "application/pdf").header("X-Content-Type-Options", "nosniff").body(b),
+        None => tauri::http::Response::builder().status(404).body(Vec::new()),
+    }
+    .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
+}
+
+/// Checks one research topic, sends its notifications and tells the UI.
+fn run_research_check(app: &AppHandle, id: i64) -> Option<Result<research::CheckOutcome, String>> {
+    let state = app.state::<AppState>();
+    {
+        let mut busy = state.research_checking.lock().ok()?;
+        if !busy.insert(id) {
+            return None;
+        }
+    }
+    let _ = app.emit("research:checking", id);
+    let result = research::check_topic(&state.store, id, &state.fetcher, Utc::now(), now()).map_err(err);
+    if let Ok(mut busy) = state.research_checking.lock() {
+        busy.remove(&id);
+    }
+    if let Ok(out) = &result {
+        for p in &out.notify {
+            let mut body = p.paper.title.clone();
+            let by = p.paper.short_authors();
+            if !by.is_empty() {
+                body.push_str(&format!(" ({by})"));
+            }
+            let _ = app.notification().builder().title(format!("New paper: {}", out.topic_name)).body(body).show();
+        }
+        if out.notify_more > 0 {
+            let _ = app.notification().builder().title(&out.topic_name).body(format!("…and {} more new papers", out.notify_more)).show();
+        }
+    }
+    let _ = app.emit("research:changed", id);
+    Some(result)
+}
+
+/// Checks research topics whose interval has passed, every minute.
+fn start_research_timer(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut last_prune: Option<std::time::Instant> = None;
+        // Give the window a moment before the first round of downloads.
+        std::thread::sleep(Duration::from_secs(20));
+        loop {
+            let due = {
+                let state = app.state::<AppState>();
+                let ids = state.store().ok().and_then(|s| research::due_topics(&s, now()).ok()).unwrap_or_default();
+                if last_prune.is_none_or(|t| t.elapsed() > Duration::from_secs(3600)) {
+                    if let Ok(s) = state.store() {
+                        let _ = s.prune_research(Utc::now());
+                    }
+                    last_prune = Some(std::time::Instant::now());
+                }
+                ids
+            };
+            for id in due {
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    if let Some(Err(e)) = run_research_check(&handle, id) {
+                        eprintln!("research: {e}");
+                    }
+                });
+            }
+            std::thread::sleep(Duration::from_secs(60));
+        }
+    });
+}
+
 // ---------- tasks ----------
 
 /// Downloads today's dollar rate in the background when the kept one is from an earlier day,
@@ -725,6 +1038,11 @@ pub fn run() {
             let path = request.uri().path().to_string();
             std::thread::spawn(move || responder.respond(serve_image(&app, &path)));
         })
+        .register_asynchronous_uri_scheme_protocol("paperpdf", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(serve_pdf(&app, &path)));
+        })
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let store = Store::open(&dir.join("cocoadesk.db")).map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
@@ -742,6 +1060,8 @@ pub fn run() {
                 images,
                 overlay: Mutex::new(None),
                 rate_tried: Mutex::new(None),
+                research_checking: Mutex::new(HashSet::new()),
+                pdf_dir: dir.join("research-pdf"),
             });
             build_tray(app.handle())?;
             let theme = appicon::current(&*app.state::<AppState>().store()?);
@@ -750,6 +1070,7 @@ pub fn run() {
             }
             start_timer(app.handle().clone());
             start_news_timer(app.handle().clone());
+            start_research_timer(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -818,7 +1139,35 @@ pub fn run() {
             task_card_move,
             task_card_paid,
             rate_refresh,
-            rate_set_manual
+            rate_set_manual,
+            research_settings,
+            research_save_settings,
+            research_search,
+            research_overview,
+            research_topics_view,
+            research_save_topic,
+            research_delete_topic,
+            research_check_now,
+            research_mark_topic_read,
+            research_library,
+            research_set_saved,
+            research_set_read,
+            research_set_note,
+            research_set_subject,
+            research_set_collections,
+            research_save_collection,
+            research_delete_collection,
+            research_blocked,
+            research_block,
+            research_unblock,
+            research_read,
+            research_cite,
+            research_explore,
+            research_task_boards,
+            research_add_to_tasks,
+            research_pdf,
+            research_save_pdf,
+            research_open
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");

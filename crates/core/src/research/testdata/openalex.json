@@ -1,0 +1,17 @@
+{"meta":{"count":2,"page":1,"per_page":25},"results":[
+{"id":"https://openalex.org/W3001","doi":"https://doi.org/10.1016/J.Carbon.2020.01.002","title":"Graphene oxide in cement composites","display_name":"Graphene oxide in cement composites","publication_year":2020,"publication_date":"2020-03-15","language":"en","type":"article","cited_by_count":42,
+"ids":{"openalex":"https://openalex.org/W3001","doi":"https://doi.org/10.1016/j.carbon.2020.01.002","pmid":"https://pubmed.ncbi.nlm.nih.gov/31234567"},
+"authorships":[{"author_position":"first","author":{"id":"https://openalex.org/A1","display_name":"Ivan I. Petrov"}},{"author_position":"last","author":{"id":"https://openalex.org/A2","display_name":"Anna Sidorova"}}],
+"primary_location":{"is_oa":false,"landing_page_url":"https://www.sciencedirect.com/science/article/pii/S0008622320300020","pdf_url":null,"source":{"display_name":"Carbon","type":"journal","host_organization_name":"Elsevier BV"}},
+"best_oa_location":{"is_oa":true,"landing_page_url":"https://europepmc.org/article/MED/31234567","pdf_url":"https://europepmc.org/articles/PMC7000001/pdf"},
+"open_access":{"is_oa":true,"oa_status":"green","oa_url":"https://europepmc.org/articles/PMC7000001/pdf"},
+"biblio":{"volume":"160","issue":"2","first_page":"101","last_page":"112"},
+"keywords":[{"display_name":"Graphene oxide"},{"display_name":"Cement"}],
+"abstract_inverted_index":{"Graphene":[0],"oxide":[1],"strengthens":[2],"cement.":[3]}},
+{"id":"https://openalex.org/W3002","doi":null,"title":"Модифицирование бетона графеном и оксидом графена","publication_year":2020,"publication_date":"2020-06-01","language":"ru","type":"article","cited_by_count":3,
+"authorships":[{"author":{"display_name":"А. Машхадани"}},{"author":{"display_name":"В. Ф. Першин"}}],
+"primary_location":{"landing_page_url":"https://cyberleninka.ru/article/n/modifitsirovanie-betona-grafenom-i-oksidom-grafena","source":{"display_name":"Journal of Advanced Materials and Technologies","type":"journal"}},
+"open_access":{"is_oa":true,"oa_status":"gold","oa_url":null},
+"biblio":{"volume":null,"issue":"2","first_page":null,"last_page":null},
+"abstract_inverted_index":null}
+]}

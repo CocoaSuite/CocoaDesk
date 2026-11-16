@@ -230,6 +230,58 @@ CREATE TABLE task_cards (
 CREATE INDEX task_cards_list ON task_cards(list_id, position);
 CREATE INDEX task_cards_done ON task_cards(done_at) WHERE done_at IS NOT NULL;
 "#,
+    r#"
+CREATE TABLE research_papers (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  data TEXT NOT NULL,
+  seen_at TEXT NOT NULL
+);
+CREATE TABLE research_topics (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  last_checked TEXT,
+  last_error TEXT
+);
+CREATE TABLE research_hits (
+  topic_id INTEGER NOT NULL REFERENCES research_topics(id) ON DELETE CASCADE,
+  paper_id INTEGER NOT NULL REFERENCES research_papers(id) ON DELETE CASCADE,
+  found_at TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (topic_id, paper_id)
+);
+CREATE INDEX research_hits_found ON research_hits(topic_id, found_at);
+CREATE TABLE research_library (
+  paper_id INTEGER PRIMARY KEY REFERENCES research_papers(id) ON DELETE CASCADE,
+  added_at TEXT NOT NULL,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT '',
+  task_card_id INTEGER REFERENCES task_cards(id) ON DELETE SET NULL
+);
+CREATE TABLE research_collections (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE research_collection_papers (
+  collection_id INTEGER NOT NULL REFERENCES research_collections(id) ON DELETE CASCADE,
+  paper_id INTEGER NOT NULL REFERENCES research_library(paper_id) ON DELETE CASCADE,
+  PRIMARY KEY (collection_id, paper_id)
+);
+CREATE TABLE research_blocked (
+  value TEXT PRIMARY KEY
+);
+CREATE TABLE research_texts (
+  paper_id INTEGER PRIMARY KEY REFERENCES research_papers(id) ON DELETE CASCADE,
+  article TEXT,
+  error TEXT,
+  fetched_at TEXT NOT NULL
+);
+"#,
 ];
 
 impl Store {
