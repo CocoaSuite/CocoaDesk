@@ -6,6 +6,7 @@ import { ClassesScreen } from './ui/classes'
 import { NewsScreen } from './ui/news'
 import { BoardsScreen } from './ui/boards'
 import { TasksScreen } from './ui/tasks'
+import { appSettingsDialog } from './ui/appsettings'
 
 type Section = 'classes' | 'tasks' | 'news' | 'boards'
 
@@ -46,7 +47,8 @@ function show(s: Section) {
   void screens[s].load()
 }
 
-app.append(h('header', { id: 'top' }, h('div', { class: 'brand' }, logo(), 'CocoaDesk'), h('span', { class: 'sp' }), status), shell)
+app.append(h('header', { id: 'top' }, h('div', { class: 'brand' }, logo(), 'CocoaDesk'), h('span', { class: 'sp' }), status,
+  h('button', { class: 'ic', title: 'Settings', 'aria-label': 'Settings', onclick: appSettingsDialog }, icon('gear'))), shell)
 show(current)
 // Classes keep the status line current even while News is open.
 if (current !== 'classes') void classes.load()
