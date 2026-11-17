@@ -1,0 +1,76 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/tC9xay61UC35GJQmMPK5JIWpjAw</id>
+  <title>arXiv Query: search_query=all:graphene&amp;id_list=&amp;start=0&amp;max_results=2</title>
+  <updated>2026-11-16T21:02:04Z</updated>
+  <link href="https://arxiv.org/api/query?search_query=all:graphene&amp;start=0&amp;max_results=2&amp;id_list=" type="application/atom+xml"/>
+  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>
+  <opensearch:totalResults>22141</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2611.18490v1</id>
+    <title>Fine-tuned atomistic foundation model for accurate sodium-carbon chemistry in Na-ion batteries</title>
+    <updated>2026-11-13T18:04:13Z</updated>
+    <link href="https://arxiv.org/abs/2611.18490v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2611.18490v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Atomistic foundation models have emerged as a promising route to DFT-level accuracy for materials simulation with complex chemical environments. However, their reliability across competing bonding regimes and, more importantly, how complex bonding affects predictions of material properties remain unclear. Among materials with competing bonding regimes, sodium storage in hard carbon poses a substantial challenge. Hard carbon features diverse local structural motifs, including defective and curved graphitic regions, amorphous regions, and closed/open pores. Motivated by its importance for Na-ion batteries, we systematically evaluate existing pretrained foundation models based on the MACE architecture across different local Na/C motifs. We find that the pretrained models fail to accurately capture Na-Na and Na-C interactions for metallic Na clusters on graphene. To recover a DFT-level energetic description, we employ targeted fine-tuning, showing that it can describe the energetic stability of local motifs and achieve sufficient transferability to unseen Na/C environments. With the developed fine-tuned model, we establish a correlation between closed-pore radius in hard carbon and plateau voltage, showing that the small pores contribute at larger voltages than large ones, suggesting thus how the developed fine-tuned foundation model can link atomistic information with materials design for complex bonding environments.</summary>
+    <category term="cond-mat.mtrl-sci" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="physics.comp-ph" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-11-13T18:04:13Z</published>
+    <arxiv:comment>20 pages, 5 figures</arxiv:comment>
+    <arxiv:primary_category term="cond-mat.mtrl-sci"/>
+    <author>
+      <name>Andres Felipe Usuga</name>
+      <arxiv:affiliation>Centre of Excellence ENSEMBLE3 Sp. z o. o</arxiv:affiliation>
+    </author>
+    <author>
+      <name>Ihor Radchenko</name>
+      <arxiv:affiliation>Centre of Excellence ENSEMBLE3 Sp. z o. o</arxiv:affiliation>
+    </author>
+    <author>
+      <name>Yuxin Tang</name>
+      <arxiv:affiliation>Qingyuan Innovation Laboratory</arxiv:affiliation>
+      <arxiv:affiliation>College of Chemical Engineering - Fuzhou University</arxiv:affiliation>
+    </author>
+    <author>
+      <name>Oleksandr I. Malyi</name>
+      <arxiv:affiliation>Qingyuan Innovation Laboratory</arxiv:affiliation>
+      <arxiv:affiliation>Centre of Excellence ENSEMBLE3 Sp. z o. o</arxiv:affiliation>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2611.18318v1</id>
+    <title>Quantized resistance limitations for graphene p-n junction devices</title>
+    <updated>2026-11-13T15:33:21Z</updated>
+    <link href="https://arxiv.org/abs/2611.18318v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2611.18318v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Developing high-resistance quantized Hall resistance standards requires accessing values beyond the robust value seen in epitaxial graphene (R_{\mathrm{H}}=\ \frac{1}{2}\frac{h}{e^{2}}). This study evaluates the available parameter space of the coefficient of effective resistance across various epitaxial graphene p-n junction topologies, including rectangular, Corbino, and triangular layouts. Because mapping desired resistances to device configurations is mathematically degenerate, an automated Landauer-Büttiker Python solver was developed for all three topologies and was validated by cryogenic multi-terminal transport measurements and LTspice simulations. By analyzing the Shannon entropy of available states, it is found that rectangular checkerboards maximize topological complexity and tunable outputs, whereas Corbino geometries exhibit highly constrained resistance availabilities.</summary>
+    <category term="cond-mat.mes-hall" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-11-13T15:33:21Z</published>
+    <arxiv:primary_category term="cond-mat.mes-hall"/>
+    <author>
+      <name>Tamar M. Padwa</name>
+    </author>
+    <author>
+      <name>DaVonne Henry</name>
+    </author>
+    <author>
+      <name>Dominick S. Scaletta</name>
+    </author>
+    <author>
+      <name>Heather M. Hill</name>
+    </author>
+    <author>
+      <name>Antonio L. Levy</name>
+    </author>
+    <author>
+      <name>Dean G. Jarrett</name>
+    </author>
+    <author>
+      <name>David B. Newell</name>
+    </author>
+    <author>
+      <name>Albert F. Rigosi</name>
+    </author>
+  </entry>
+</feed>
