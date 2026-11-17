@@ -21,6 +21,7 @@ use cocoadesk_core::import::WorkbookPreview;
 use cocoadesk_core::model::{ClassInput, MarkStatus, Period};
 use cocoadesk_core::news::store::{self as news, CheckOutcome, Filter, NewsView, Reading};
 use cocoadesk_core::news::{feed, HttpFetcher, TopicInput};
+use cocoadesk_core::notes::Note;
 use cocoadesk_core::service::{self, ImportDone, ImportRequest, Settings, WeekView};
 use cocoadesk_core::store::{SemesterInput, Store};
 use cocoadesk_core::tasks::{self, BoardInput, CardInput, RateInfo, TasksView};
@@ -214,6 +215,33 @@ fn import_exclusions(state: State<AppState>, semester_id: i64) -> Result<Vec<Str
 fn import_commit(state: State<AppState>, token: String, request: ImportRequest) -> Result<ImportDone, String> {
     let mut store = state.store()?;
     state.file(&token, |f| service::commit_import(&mut store, &f.bytes, &request, now()))?.map_err(err)
+}
+
+// ---------- notes ----------
+
+#[tauri::command]
+fn notes_list(state: State<AppState>) -> Result<Vec<Note>, String> {
+    state.store()?.notes().map_err(err)
+}
+
+#[tauri::command]
+fn note_create(state: State<AppState>, body: String) -> Result<Note, String> {
+    state.store()?.create_note(&body, now()).map_err(err)
+}
+
+#[tauri::command]
+fn note_save(state: State<AppState>, id: i64, body: String) -> Result<Note, String> {
+    state.store()?.save_note(id, &body, now()).map_err(err)
+}
+
+#[tauri::command]
+fn note_pin(state: State<AppState>, id: i64, pinned: bool) -> Result<(), String> {
+    state.store()?.set_note_pinned(id, pinned).map_err(err)
+}
+
+#[tauri::command]
+fn note_delete(state: State<AppState>, id: i64) -> Result<(), String> {
+    state.store()?.delete_note(id).map_err(err)
 }
 
 // ---------- moodboards ----------
@@ -639,14 +667,19 @@ fn show_main(app: &AppHandle) {
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open CocoaDesk", true, None::<&str>)?;
+    let note = MenuItem::with_id(app, "note", "Quick note", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit CocoaDesk", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &note, &quit])?;
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("CocoaDesk")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| match e.id.as_ref() {
             "open" => show_main(app),
+            "note" => {
+                show_main(app);
+                let _ = app.emit("notes:quick", ());
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -818,7 +851,12 @@ pub fn run() {
             task_card_move,
             task_card_paid,
             rate_refresh,
-            rate_set_manual
+            rate_set_manual,
+            notes_list,
+            note_create,
+            note_save,
+            note_pin,
+            note_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running CocoaDesk");

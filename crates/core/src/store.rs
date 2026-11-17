@@ -230,6 +230,15 @@ CREATE TABLE task_cards (
 CREATE INDEX task_cards_list ON task_cards(list_id, position);
 CREATE INDEX task_cards_done ON task_cards(done_at) WHERE done_at IS NOT NULL;
 "#,
+    r#"
+CREATE TABLE notes (
+  id INTEGER PRIMARY KEY,
+  body TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+"#,
 ];
 
 impl Store {
