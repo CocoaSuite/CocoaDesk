@@ -25,6 +25,17 @@ Boards of lists and cards, in the spirit of Trello.
 - **Salary (optional).** Enter what the client pays in dollars or rubles. The service's commission (10% by default, set per board, or per card when a job is different) is taken off, and the card shows what you actually get in both currencies. The dollar rate is the Central Bank of Russia's, updated daily, or one you type in yourself. A card marked **paid** keeps the rate of that day.
 - **Monthly earnings**: what you've earned this month so far across all boards, what's still waiting on the board, and the last six months with totals and a monthly average. A card counts in the month it reached a list that *counts as done*. Figures update live while you drag a card into or out of Done.
 
+### Notes
+
+Quick Markdown notes, made to get out of the way.
+
+- **Find or create**: type in the box at the top of the list. Notes filter as you type; Enter opens the match or starts a new note titled with what you typed. **+** or Ctrl+N starts a blank one. A note's title is its first line, so there's nothing to name or file.
+- **Write in Markdown**: the note you're in shows its text; the others show it formatted, and their task boxes can be ticked right there. Lists carry on when you press Enter, Tab indents, Ctrl+B / Ctrl+I make bold and italic, Ctrl+Enter ticks a task. Notes save as you type, and a note left empty is removed.
+- **Split view**: Ctrl+click a note, drag it onto the notes, or use the split button on a note to put up to 10 side by side — as **bricks** (rows that fill the width, offset from each other) or an even **grid**. Drag a note's title bar to rearrange; double-click it to focus that note alone. Alt+1…0 jumps between them, Ctrl+W closes one.
+- **Collapsible list**: hide the note list with the sidebar button or Ctrl+\\; Ctrl+K brings it back with the search box ready.
+- **Quick note from anywhere**: Ctrl+Shift+N, the note button in the top bar, or *Quick note* in the tray menu opens a small box over any section. Esc keeps it.
+- Pin notes to the top, copy one as Markdown, and undo a delete from the message that appears.
+
 ### Moodboards
 
 Boards of reference pictures in the spirit of PureRef, with Figma-like sections.

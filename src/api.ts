@@ -184,3 +184,15 @@ export const taskApi = {
   refreshRate: () => invoke<RateInfo>('rate_refresh'),
   setManualRate: (value: number | null) => invoke<void>('rate_set_manual', { value })
 }
+
+// ---------- notes ----------
+
+export interface Note { id: number; body: string; pinned: boolean; createdAt: string; updatedAt: string }
+
+export const noteApi = {
+  list: () => invoke<Note[]>('notes_list'),
+  create: (body: string) => invoke<Note>('note_create', { body }),
+  save: (id: number, body: string) => invoke<Note>('note_save', { id, body }),
+  pin: (id: number, pinned: boolean) => invoke<void>('note_pin', { id, pinned }),
+  remove: (id: number) => invoke<void>('note_delete', { id })
+}

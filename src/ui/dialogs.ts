@@ -2,9 +2,12 @@ import { h } from '../util'
 
 let toastEl: HTMLElement | null = null
 let toastT: ReturnType<typeof setTimeout> | undefined
-export function toast(msg: string, ms = 2800) {
+/** Shows a short message, optionally with one action button (such as Undo). */
+export function toast(msg: string, ms = 2800, action?: { label: string; run: () => void }) {
   if (!toastEl) { toastEl = h('div', { id: 'toast', role: 'status' }); document.body.append(toastEl) }
-  toastEl.textContent = msg
+  toastEl.replaceChildren(msg)
+  if (action) toastEl.append(h('button', { class: 'link', onclick: () => { toastEl!.classList.remove('show'); action.run() } }, action.label))
+  toastEl.classList.toggle('act', !!action)
   toastEl.classList.add('show')
   clearTimeout(toastT)
   toastT = setTimeout(() => toastEl!.classList.remove('show'), ms)
