@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "cocoadesk"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "cocoadesk-core",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "cocoadesk-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ammonia",
  "calamine",
