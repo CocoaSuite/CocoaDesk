@@ -9,6 +9,7 @@ import { BoardsScreen } from './ui/boards'
 import { TasksScreen } from './ui/tasks'
 import { NotesScreen } from './ui/notes'
 import { appSettingsDialog } from './ui/appsettings'
+import { windowControls } from './ui/titlebar'
 
 type Section = 'classes' | 'tasks' | 'news' | 'research' | 'boards' | 'notes'
 
@@ -51,9 +52,11 @@ function show(s: Section) {
   void screens[s].load()
 }
 
-app.append(h('header', { id: 'top' }, h('div', { class: 'brand' }, logo(), 'CocoaDesk'), h('span', { class: 'sp' }), status,
+const top = h('header', { id: 'top' }, h('div', { class: 'brand' }, logo(), 'CocoaDesk'), h('span', { class: 'sp' }), status,
   h('button', { class: 'ic', title: 'Quick note (Ctrl+Shift+N)', 'aria-label': 'Quick note', onclick: () => quickNote() }, icon('note')),
-  h('button', { class: 'ic', title: 'Settings', 'aria-label': 'Settings', onclick: appSettingsDialog }, icon('gear'))), shell)
+  h('button', { class: 'ic', title: 'Settings', 'aria-label': 'Settings', onclick: appSettingsDialog }, icon('gear')))
+top.append(windowControls(top))
+app.append(top, shell)
 show(current)
 // Classes keep the status line current even while News is open.
 if (current !== 'classes') void classes.load()

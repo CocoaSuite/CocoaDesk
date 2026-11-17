@@ -21,6 +21,8 @@
         "backgroundColor": "#121212",
         "center": true,
         "maximized": true,
+        "decorations": false,
+        "shadow": true,
         "dragDropEnabled": false
       }
     ],

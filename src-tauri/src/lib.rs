@@ -325,6 +325,8 @@ fn board_overlay(window: tauri::WebviewWindow, state: State<AppState>, on: bool)
             });
         }
         window.unmaximize().map_err(e)?;
+        // The pinned panel hides the top bar and its window controls, so it gets the native frame back.
+        window.set_decorations(true).map_err(e)?;
         window.set_min_size(Some(tauri::LogicalSize::new(240.0, 180.0))).map_err(e)?;
         let scale = window.scale_factor().map_err(e)?;
         let size = tauri::LogicalSize::new(560.0, 440.0).to_physical::<u32>(scale);
@@ -339,6 +341,7 @@ fn board_overlay(window: tauri::WebviewWindow, state: State<AppState>, on: bool)
         window.set_always_on_top(true).map_err(e)?;
     } else {
         window.set_always_on_top(false).map_err(e)?;
+        window.set_decorations(false).map_err(e)?;
         window.set_min_size(Some(tauri::LogicalSize::new(900.0, 560.0))).map_err(e)?;
         if let Some(place) = saved.take() {
             window.set_size(place.size).map_err(e)?;
