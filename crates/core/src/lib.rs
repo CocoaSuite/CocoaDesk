@@ -10,6 +10,7 @@ pub mod import;
 pub mod model;
 pub mod news;
 pub mod notes;
+pub mod research;
 pub mod service;
 pub mod store;
 pub mod tasks;
